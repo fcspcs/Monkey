@@ -36,7 +36,10 @@ jobs:
   release:
     runs-on: windows-latest
     env:
-      TAG: ${{ inputs.version || github.ref_name }}
+      # Wie hereingereicht - der naechste Schritt macht daraus RELEASE_TAG.
+      # Bewusst ein anderer Name: was hier steht, laesst sich spaeter nicht
+      # ueberschreiben, Eintraege aus env: haben Vorrang vor GITHUB_ENV.
+      VERSION_INPUT: ${{ inputs.version || github.ref_name }}
       NOTES: ${{ inputs.notes }}
 
     steps:
@@ -53,33 +56,47 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Build installer
+      - name: Work out the version
         shell: pwsh
         run: |
+          # Ohne fuehrendes v getippt? Dann eines davor - die Tags heissen v1.0,
+          # v1.1, und der Downloadlink haengt an dieser Schreibweise.
+          $tag = $env:VERSION_INPUT.Trim()
+          if (-not $tag.StartsWith('v')) { $tag = "v$tag" }
+
           # v1.1 -> 1.1.0: MSBuild will drei Stellen sehen.
-          $parts = @($env:TAG.TrimStart('v').Split('.'))
+          $parts = @($tag.TrimStart('v').Split('.'))
           while ($parts.Count -lt 3) { $parts += '0' }
-          ./build.ps1 -Version ($parts[0..2] -join '.')
+
+          "RELEASE_TAG=$tag"                          >> $env:GITHUB_ENV
+          "RELEASE_VERSION=$($parts[0..2] -join '.')" >> $env:GITHUB_ENV
+
+          Write-Host "Publishing $tag as version $($parts[0..2] -join '.')."
+
+      - name: Build installer
+        shell: pwsh
+        run: ./build.ps1 -Version $env:RELEASE_VERSION
 
       - name: Publish the release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $number = $env:TAG.TrimStart('v')
+          $tag = $env:RELEASE_TAG
+          $number = $tag.TrimStart('v')
 
           # Text des Releases: was beim Start mitgegeben wurde, sonst die
           # Beschreibung des Tags, sonst laesst GitHub die Aenderungen auflisten.
           $notes = $env:NOTES
           if (-not $notes) {
-            $notes = (git tag -l --format='%(contents)' $env:TAG | Out-String).Trim()
+            $notes = (git tag -l --format='%(contents)' $tag | Out-String).Trim()
           }
 
           # Gibt es den Tag noch nicht, legt GitHub ihn auf diesen Stand an.
           $target = (git rev-parse HEAD).Trim()
 
-          $arguments = @(
-            'release', 'create', $env:TAG, 'dist/MonkeySetup.exe',
+          [string[]]$arguments = @(
+            'release', 'create', $tag, 'dist/MonkeySetup.exe',
             '--title', "Monkey $number",
             '--target', $target
           )

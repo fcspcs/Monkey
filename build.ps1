@@ -28,7 +28,12 @@ if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = 1
 $env:DOTNET_NOLOGO = 1
 
-$versionArgs = if ($Version) { @("-p:Version=$Version") } else { @() }
+# Ausdruecklich als Feld halten und einzeln fuellen: das Ergebnis eines
+# if-Ausdrucks mit einem einzigen Eintrag kommt als Zeichenkette heraus, und die
+# zerlegt PowerShell beim Weiterreichen in einzelne Zeichen - dotnet bekaeme
+# dann "- p : V e r s i o n = ...".
+[string[]]$versionArgs = @()
+if ($Version) { $versionArgs += "-p:Version=$Version" }
 
 $staging = Join-Path $PSScriptRoot "build\staging"
 $payload = Join-Path $PSScriptRoot "src\Monkey.Setup\payload"

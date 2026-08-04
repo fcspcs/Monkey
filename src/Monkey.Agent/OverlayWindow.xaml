@@ -25,34 +25,39 @@
             <DropShadowEffect BlurRadius="16" ShadowDepth="2" Opacity="0.5" Color="Black"/>
         </Border.Effect>
 
-        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-            <StackPanel MinWidth="118" VerticalAlignment="Center">
-                <TextBlock x:Name="TimeLabel"
-                           Text="--:--:--"
-                           FontFamily="Segoe UI Semibold"
-                           FontSize="23"
-                           Foreground="#F2FFFFFF"
-                           HorizontalAlignment="Center"/>
-                <TextBlock x:Name="CaptionLabel"
-                           Text="left"
-                           FontFamily="Segoe UI"
-                           FontSize="10.5"
-                           Foreground="#99FFFFFF"
-                           HorizontalAlignment="Center"
-                           Margin="0,1,0,0"/>
-            </StackPanel>
+        <StackPanel MinWidth="118">
+            <TextBlock x:Name="TimeLabel"
+                       Text="--:--:--"
+                       FontFamily="Segoe UI Semibold"
+                       FontSize="23"
+                       Foreground="#F2FFFFFF"
+                       HorizontalAlignment="Center"/>
+            <TextBlock x:Name="CaptionLabel"
+                       Text="left"
+                       FontFamily="Segoe UI"
+                       FontSize="10.5"
+                       Foreground="#99FFFFFF"
+                       HorizontalAlignment="Center"
+                       Margin="0,1,0,0"/>
 
-            <!-- Erscheint nur unter dem Mauszeiger, rechts neben der Zeit. Das
-                 Fenster ist rechts verankert und waechst dadurch nach links, der
-                 Zeiger bleibt also im Fenster - kein Flackern. -->
-            <Image x:Name="HoverIcon"
-                   Source="Assets/monkey.png"
-                   Width="36" Height="36"
-                   Margin="10,0,0,0"
-                   VerticalAlignment="Center"
-                   Visibility="Collapsed"
-                   IsHitTestVisible="False"
-                   RenderOptions.BitmapScalingMode="HighQuality"/>
+            <!-- Faehrt unter der Beschriftung heraus, sobald der Zeiger auf dem
+                 Overlay steht. Der Rahmen ist der Vorhang: seine Hoehe wird
+                 animiert, das Bild darin bleibt gleich gross und wird beschnitten.
+                 Weil das Fenster oben verankert ist, waechst es nach unten - der
+                 Zeiger bleibt darin und die Anzeige springt nicht. -->
+            <Border x:Name="HoverIconBox"
+                    Height="0"
+                    Opacity="0"
+                    ClipToBounds="True"
+                    HorizontalAlignment="Center">
+                <Image x:Name="HoverIcon"
+                       Source="Assets/monkey.png"
+                       Width="38" Height="38"
+                       Margin="0,7,0,0"
+                       VerticalAlignment="Top"
+                       IsHitTestVisible="False"
+                       RenderOptions.BitmapScalingMode="HighQuality"/>
+            </Border>
         </StackPanel>
     </Border>
 </Window>

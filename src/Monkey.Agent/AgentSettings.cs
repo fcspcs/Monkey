@@ -47,6 +47,15 @@ internal static class AgentSettings
         set => WriteString(nameof(OverlayColor), value);
     }
 
+    /// <summary>In welcher Bildschirmecke das Overlay sitzt.</summary>
+    public static OverlayCorner OverlayCorner
+    {
+        get => Enum.TryParse<OverlayCorner>(ReadString(nameof(OverlayCorner), string.Empty), out var value)
+            ? value
+            : Agent.OverlayCorner.TopRight;
+        set => WriteString(nameof(OverlayCorner), value.ToString());
+    }
+
     private static bool ReadBool(string name, bool fallback)
     {
         try

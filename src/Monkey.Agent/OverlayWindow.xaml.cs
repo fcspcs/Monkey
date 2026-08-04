@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Threading;
 using Monkey.Core;
@@ -21,14 +22,34 @@ namespace Monkey.Agent;
 public partial class OverlayWindow : Window
 {
     private const double EdgeMargin = 16;
+
+    /// <summary>Farbwert fuer die Ampel in dunklen Toenen.</summary>
+    public const string AutoDark = "auto-dark";
+    /// <summary>Farbwert fuer die Ampel in hellen Toenen.</summary>
+    public const string AutoLight = "auto";
     // Bestimmt auch, wie schnell das Overlay nach dem Hinfahren Klicks annimmt.
     private static readonly TimeSpan HoverPollInterval = TimeSpan.FromMilliseconds(100);
 
-    private static readonly Color Normal = Color.FromRgb(0xF2, 0xF4, 0xF8);
-    private static readonly Color Warning = Color.FromRgb(0xFF, 0xC1, 0x4E);
-    private static readonly Color Critical = Color.FromRgb(0xFF, 0x6B, 0x5E);
-    private static readonly Color PausedColor = Color.FromRgb(0x7A, 0xC7, 0xFF);
-    private static readonly Color Offline = Color.FromRgb(0x9A, 0x9A, 0xA2);
+    /// <summary>
+    /// Farbsatz fuer die Ampel. Es gibt zwei davon: einen hellen fuer dunkle
+    /// Hintergruende und einen dunklen fuer helle - auf einem weissen Desktop
+    /// waere die helle Fassung sonst kaum zu lesen.
+    /// </summary>
+    private readonly record struct Palette(Color Normal, Color Warning, Color Critical, Color Paused, Color Idle);
+
+    private static readonly Palette LightPalette = new(
+        Normal: Color.FromRgb(0xF2, 0xF4, 0xF8),
+        Warning: Color.FromRgb(0xFF, 0xC1, 0x4E),
+        Critical: Color.FromRgb(0xFF, 0x6B, 0x5E),
+        Paused: Color.FromRgb(0x7A, 0xC7, 0xFF),
+        Idle: Color.FromRgb(0x9A, 0x9A, 0xA2));
+
+    private static readonly Palette DarkPalette = new(
+        Normal: Color.FromRgb(0x14, 0x14, 0x1A),
+        Warning: Color.FromRgb(0xA8, 0x66, 0x00),
+        Critical: Color.FromRgb(0xC0, 0x2E, 0x22),
+        Paused: Color.FromRgb(0x1B, 0x63, 0xA6),
+        Idle: Color.FromRgb(0x6A, 0x6A, 0x72));
 
     private static readonly Brush PanelBrush = new SolidColorBrush(Color.FromArgb(0xE0, 0x10, 0x10, 0x14));
     private static readonly Effect PanelShadow = Freeze(new DropShadowEffect
@@ -54,6 +75,11 @@ public partial class OverlayWindow : Window
 
     /// <summary>Feste Farbe der Zahl, oder null fuer die Ampel nach Restzeit.</summary>
     public Color? CustomColor { get; private set; }
+
+    /// <summary>Ampel in dunklen Toenen - fuer helle Desktops.</summary>
+    private bool _autoDark;
+
+    private Palette Tones => _autoDark ? DarkPalette : LightPalette;
 
     public OverlayWindow()
     {
@@ -82,11 +108,29 @@ public partial class OverlayWindow : Window
     private void OnClick(object sender, System.Windows.Input.MouseButtonEventArgs e) =>
         Clicked?.Invoke(this, EventArgs.Empty);
 
+    /// <summary>In welcher Bildschirmecke das Overlay sitzt.</summary>
+    public OverlayCorner Corner { get; private set; } = OverlayCorner.TopRight;
+
+    public void SetCorner(OverlayCorner corner)
+    {
+        Corner = corner;
+        Reposition();
+    }
+
+    /// <summary>
+    /// Haengt das Overlay in die gewaehlte Ecke. Weil sich die Groesse aendert,
+    /// sobald das Symbol ein- oder ausfaehrt, wird von der jeweils verankerten
+    /// Kante aus gerechnet - unten waechst es dann nach oben statt aus dem Bild.
+    /// </summary>
     private void Reposition()
     {
         var area = SystemParameters.WorkArea;
-        Left = area.Right - ActualWidth - EdgeMargin;
-        Top = area.Top + EdgeMargin;
+
+        var left = Corner is OverlayCorner.TopLeft or OverlayCorner.BottomLeft;
+        var top = Corner is OverlayCorner.TopLeft or OverlayCorner.TopRight;
+
+        Left = left ? area.Left + EdgeMargin : area.Right - ActualWidth - EdgeMargin;
+        Top = top ? area.Top + EdgeMargin : area.Bottom - ActualHeight - EdgeMargin;
     }
 
     public void KeepOnTop()
@@ -95,11 +139,15 @@ public partial class OverlayWindow : Window
             NativeMethods.BringToTop(_handle);
     }
 
-    /// <summary>Anzeigevorlieben setzen und sofort neu zeichnen.</summary>
-    public void ApplyPreferences(bool showBackground, Color? customColor)
+    /// <summary>
+    /// Anzeigevorlieben setzen. Der Farbwert ist entweder "auto" (helle Ampel),
+    /// "auto-dark" (dunkle Ampel) oder ein fester Hex-Wert.
+    /// </summary>
+    public void ApplyPreferences(bool showBackground, string colorValue)
     {
         ShowBackground = showBackground;
-        CustomColor = customColor;
+        _autoDark = string.Equals(colorValue, AutoDark, StringComparison.OrdinalIgnoreCase);
+        CustomColor = ParseColor(colorValue);
         Paint();
     }
 
@@ -142,6 +190,30 @@ public partial class OverlayWindow : Window
         Paint();
     }
 
+    /// <summary>Gesamthoehe des ausgefahrenen Symbols samt Abstand darueber.</summary>
+    private const double HoverIconHeight = 45;
+
+    private static readonly Duration HoverFade = new(TimeSpan.FromMilliseconds(160));
+
+    private bool? _iconShown;
+
+    /// <summary>
+    /// Blendet das Symbol weich ein und aus, statt es hart umzuschalten. Animiert
+    /// werden Hoehe und Deckkraft gemeinsam, damit das Overlay nicht springt.
+    /// </summary>
+    private void AnimateHoverIcon(bool show)
+    {
+        if (_iconShown == show) return;
+        _iconShown = show;
+
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+
+        HoverIconBox.BeginAnimation(HeightProperty,
+            new DoubleAnimation(show ? HoverIconHeight : 0, HoverFade) { EasingFunction = ease });
+        HoverIconBox.BeginAnimation(OpacityProperty,
+            new DoubleAnimation(show ? 1 : 0, HoverFade) { EasingFunction = ease });
+    }
+
     public void Render(StatusDto? status)
     {
         _last = status;
@@ -152,8 +224,7 @@ public partial class OverlayWindow : Window
     {
         ApplyChrome();
 
-        // Das App-Symbol erscheint nur, solange der Zeiger ueber dem Overlay steht.
-        HoverIcon.Visibility = _hovering ? Visibility.Visible : Visibility.Collapsed;
+        AnimateHoverIcon(_hovering);
 
         var status = _last;
 
@@ -161,7 +232,7 @@ public partial class OverlayWindow : Window
         {
             TimeLabel.Text = "--:--";
             CaptionLabel.Text = "service unreachable";
-            Colorize(CustomColor ?? Offline);
+            Colorize(CustomColor ?? Tones.Idle);
             return;
         }
 
@@ -171,7 +242,7 @@ public partial class OverlayWindow : Window
         {
             TimeLabel.Text = $"{Math.Ceiling(grace):0} s";
             CaptionLabel.Text = "signing out - save now";
-            Colorize(Critical);
+            Colorize(Tones.Critical);
             return;
         }
 
@@ -190,7 +261,7 @@ public partial class OverlayWindow : Window
             CaptionLabel.Text = _hovering
                 ? (showElapsed ? "used so far" : "still left")
                 : (status.PauseUntil is { } until ? $"paused until {until:HH:mm}" : "paused");
-            Colorize(CustomColor ?? PausedColor);
+            Colorize(CustomColor ?? Tones.Paused);
             return;
         }
 
@@ -217,9 +288,9 @@ public partial class OverlayWindow : Window
         var remainingMinutes = status.BalanceSeconds / 60.0;
         Colorize(remainingMinutes switch
         {
-            <= 5 => Critical,
-            <= 15 => Warning,
-            _ => status.Counting ? Normal : Offline,
+            <= 5 => Tones.Critical,
+            <= 15 => Tones.Warning,
+            _ => status.Counting ? Tones.Normal : Tones.Idle,
         });
     }
 
@@ -256,7 +327,11 @@ public partial class OverlayWindow : Window
     /// <summary>"#RRGGBB" oder "#AARRGGBB" in eine Farbe, sonst null (= automatisch).</summary>
     public static Color? ParseColor(string? value)
     {
-        if (string.IsNullOrWhiteSpace(value) || value.Equals("auto", StringComparison.OrdinalIgnoreCase))
+        // Beide Automatik-Werte bedeuten "keine feste Farbe" - welcher Farbsatz
+        // dann gilt, entscheidet ApplyPreferences.
+        if (string.IsNullOrWhiteSpace(value)
+            || value.Equals(AutoLight, StringComparison.OrdinalIgnoreCase)
+            || value.Equals(AutoDark, StringComparison.OrdinalIgnoreCase))
             return null;
 
         var hex = value.TrimStart('#');

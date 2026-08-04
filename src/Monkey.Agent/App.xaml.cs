@@ -28,13 +28,24 @@ public partial class App : Application
     private StatusDto? _status;
     private bool _overlayVisible = true;
     private bool _overlayBackground = true;
-    private string _overlayColor = "auto";
+    private string _overlayColor = OverlayWindow.AutoLight;
+    private OverlayCorner _overlayCorner = OverlayCorner.TopRight;
+
+    private static readonly (string Label, OverlayCorner Value)[] OverlayCorners =
+    [
+        ("Top left", OverlayCorner.TopLeft),
+        ("Top right", OverlayCorner.TopRight),
+        ("Bottom left", OverlayCorner.BottomLeft),
+        ("Bottom right", OverlayCorner.BottomRight),
+    ];
     private int? _lastWarningShown;
 
     private static readonly (string Label, string Value)[] OverlayColors =
     [
-        ("Automatic (by time left)", "auto"),
+        ("Automatic, light", OverlayWindow.AutoLight),
+        ("Automatic, dark", OverlayWindow.AutoDark),
         ("White", "#F2F4F8"),
+        ("Black", "#14141A"),
         ("Green", "#5BD68A"),
         ("Blue", "#7AC7FF"),
         ("Yellow", "#FFC14E"),
@@ -43,7 +54,6 @@ public partial class App : Application
         ("Pink", "#FF7AC7"),
         ("Purple", "#B57AFF"),
     ];
-    private readonly Dictionary<string, Drawing::Icon> _icons = new();
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -65,8 +75,11 @@ public partial class App : Application
         _overlayBackground = AgentSettings.OverlayBackground;
         _overlayColor = AgentSettings.OverlayColor;
 
+        _overlayCorner = AgentSettings.OverlayCorner;
+
         _overlay = new OverlayWindow { CountUp = AgentSettings.CountUp };
-        _overlay.ApplyPreferences(_overlayBackground, OverlayWindow.ParseColor(_overlayColor));
+        _overlay.SetCorner(_overlayCorner);
+        _overlay.ApplyPreferences(_overlayBackground, _overlayColor);
         _overlay.Clicked += (_, _) => OpenMaster();
         _overlay.Show();
         if (!_overlayVisible) _overlay.Hide();
@@ -147,6 +160,18 @@ public partial class App : Application
         toggleBackground.Click += (_, _) => ToggleBackground();
         menu.Items.Add(toggleBackground);
 
+        var cornerMenu = new Forms::ToolStripMenuItem("Screen corner");
+        foreach (var (label, value) in OverlayCorners)
+        {
+            var item = new Forms::ToolStripMenuItem(label) { Tag = value };
+            item.Click += (s, _) =>
+            {
+                if (((Forms::ToolStripMenuItem)s!).Tag is OverlayCorner chosen) SetOverlayCorner(chosen);
+            };
+            cornerMenu.DropDownItems.Add(item);
+        }
+        menu.Items.Add(cornerMenu);
+
         var colorMenu = new Forms::ToolStripMenuItem("Number colour");
         foreach (var (label, value) in OverlayColors)
         {
@@ -183,11 +208,14 @@ public partial class App : Application
 
             foreach (Forms::ToolStripMenuItem item in colorMenu.DropDownItems)
                 item.Checked = string.Equals(item.Tag as string, _overlayColor, StringComparison.OrdinalIgnoreCase);
+
+            foreach (Forms::ToolStripMenuItem item in cornerMenu.DropDownItems)
+                item.Checked = item.Tag is OverlayCorner c && c == _overlayCorner;
         };
 
         _tray = new Forms::NotifyIcon
         {
-            Icon = IconFor("offline"),
+            Icon = TrayImage(),
             Text = "Monkey",
             Visible = true,
             ContextMenuStrip = menu,
@@ -199,117 +227,51 @@ public partial class App : Application
     {
         if (_tray is null) return;
 
-        string key;
-        string tip;
+        // Das Symbol bleibt immer dasselbe; den Zustand sagt der Tooltip.
+        var tip = _status switch
+        {
+            null => "Monkey - service unreachable",
+            { Paused: true } => $"Monkey - paused, {FormatMinutes(_status.BalanceSeconds)} banked",
+            _ => $"Monkey - {FormatMinutes(_status.BalanceSeconds)} left, "
+                 + $"{FormatMinutes(_status.SessionElapsedSeconds)} used",
+        };
 
-        if (_status is null)
-        {
-            key = "offline";
-            tip = "Monkey - service unreachable";
-        }
-        else if (_status.Paused)
-        {
-            key = "paused";
-            tip = $"Monkey - paused, {FormatMinutes(_status.BalanceSeconds)} banked";
-        }
-        else
-        {
-            var minutes = _status.BalanceSeconds / 60.0;
-            key = minutes switch { <= 5 => "critical", <= 15 => "warning", _ => "normal" };
-            tip = $"Monkey - {FormatMinutes(_status.BalanceSeconds)} left, "
-                  + $"{FormatMinutes(_status.SessionElapsedSeconds)} used";
-        }
-
-        _tray.Icon = IconFor(key);
         // Der Tooltip der Taskleiste ist auf 63 Zeichen begrenzt.
         _tray.Text = tip.Length > 62 ? tip[..62] : tip;
     }
 
-    private static Drawing::Image? _monkeyCache;
-    private static bool _monkeyTried;
+    private Drawing::Icon? _trayImage;
 
     /// <summary>
-    /// Das eingebettete Affensymbol als Bild. Fehlt es, zeichnet der Agent eben
-    /// nur den Statuspunkt - das Symbol ist Beiwerk, keine Voraussetzung.
+    /// Das Tray-Symbol: schlicht der Affe, ohne Statuspunkt. Wie es um die Zeit
+    /// steht, sagt der Tooltip - und wer es genau wissen will, klickt auf das
+    /// Overlay. Faellt das eingebettete Symbol aus, springt das Standardsymbol
+    /// ein, damit der Agent trotzdem im Infobereich auftaucht.
     /// </summary>
-    private static Drawing::Image? LoadMonkey()
+    private Drawing::Icon TrayImage()
     {
-        if (_monkeyTried) return _monkeyCache;
-        _monkeyTried = true;
+        if (_trayImage is not null) return _trayImage;
 
         try
         {
             using var stream = System.Reflection.Assembly.GetExecutingAssembly()
                 .GetManifestResourceStream("monkey.ico");
-            if (stream is null) return null;
 
-            // Aus der .ico die 32er-Fassung nehmen und herunterrechnen - das gibt
-            // ein saubereres 16er-Bild als das direkte 16er-Symbol zu skalieren.
-            using var icon = new Drawing::Icon(stream, 32, 32);
-            _monkeyCache = icon.ToBitmap();
+            if (stream is not null)
+            {
+                // Die Groesse, die Windows im Infobereich erwartet - sonst wird
+                // skaliert und das Symbol wirkt unscharf.
+                var size = Forms::SystemInformation.SmallIconSize;
+                _trayImage = new Drawing::Icon(stream, size.Width, size.Height);
+            }
         }
         catch
         {
-            _monkeyCache = null;
+            _trayImage = null;
         }
 
-        return _monkeyCache;
-    }
-
-    private Drawing::Icon IconFor(string key)
-    {
-        if (_icons.TryGetValue(key, out var cached)) return cached;
-
-        var color = key switch
-        {
-            "critical" => Drawing::Color.FromArgb(0xFF, 0x6B, 0x5E),
-            "warning" => Drawing::Color.FromArgb(0xFF, 0xC1, 0x4E),
-            "paused" => Drawing::Color.FromArgb(0x7A, 0xC7, 0xFF),
-            "normal" => Drawing::Color.FromArgb(0x5B, 0xD6, 0x8A),
-            _ => Drawing::Color.FromArgb(0x9A, 0x9A, 0xA2),
-        };
-
-        var icon = CreateTrayIcon(color);
-        _icons[key] = icon;
-        return icon;
-    }
-
-    /// <summary>
-    /// Der Affe als Tray-Symbol, mit einem kleinen Statuspunkt unten rechts -
-    /// so bleibt die Farbcodierung (gruen/gelb/rot/blau) auf einen Blick erhalten.
-    /// </summary>
-    private static Drawing::Icon CreateTrayIcon(Drawing::Color color)
-    {
-        const int size = 16;
-        using var bitmap = new Drawing::Bitmap(size, size);
-        using (var graphics = Drawing::Graphics.FromImage(bitmap))
-        {
-            graphics.SmoothingMode = Drawing::Drawing2D.SmoothingMode.AntiAlias;
-            graphics.InterpolationMode = Drawing::Drawing2D.InterpolationMode.HighQualityBicubic;
-            graphics.Clear(Drawing::Color.Transparent);
-
-            if (LoadMonkey() is { } monkey)
-                graphics.DrawImage(monkey, 0, 0, size, size);
-
-            // Punkt mit dunklem Rand, damit er sich vom Bild abhebt.
-            const int dot = 8;
-            var box = new Drawing::Rectangle(size - dot, size - dot, dot - 1, dot - 1);
-            using var brush = new Drawing::SolidBrush(color);
-            using var pen = new Drawing::Pen(Drawing::Color.FromArgb(0xE0, 0x10, 0x10, 0x14), 1.4f);
-            graphics.FillEllipse(brush, box);
-            graphics.DrawEllipse(pen, box);
-        }
-
-        var handle = bitmap.GetHicon();
-        try
-        {
-            using var temporary = Drawing::Icon.FromHandle(handle);
-            return (Drawing::Icon)temporary.Clone();
-        }
-        finally
-        {
-            NativeMethods.DestroyIcon(handle);
-        }
+        _trayImage ??= Drawing::SystemIcons.Application;
+        return _trayImage;
     }
 
     // ------------------------------------------------------------- Aktionen
@@ -345,14 +307,21 @@ public partial class App : Application
     {
         _overlayBackground = !_overlayBackground;
         AgentSettings.OverlayBackground = _overlayBackground;
-        _overlay?.ApplyPreferences(_overlayBackground, OverlayWindow.ParseColor(_overlayColor));
+        _overlay?.ApplyPreferences(_overlayBackground, _overlayColor);
     }
 
     private void SetOverlayColor(string value)
     {
         _overlayColor = value;
         AgentSettings.OverlayColor = value;
-        _overlay?.ApplyPreferences(_overlayBackground, OverlayWindow.ParseColor(value));
+        _overlay?.ApplyPreferences(_overlayBackground, value);
+    }
+
+    private void SetOverlayCorner(OverlayCorner corner)
+    {
+        _overlayCorner = corner;
+        AgentSettings.OverlayCorner = corner;
+        _overlay?.SetCorner(corner);
     }
 
     private void OpenMaster()
@@ -422,8 +391,9 @@ public partial class App : Application
             _tray.Dispose();
         }
 
-        foreach (var icon in _icons.Values) icon.Dispose();
-        _monkeyCache?.Dispose();
+        // SystemIcons.Application gehoert dem System und wird nicht freigegeben.
+        if (_trayImage is not null && _trayImage != Drawing::SystemIcons.Application)
+            _trayImage.Dispose();
 
         _singleInstance?.Dispose();
         base.OnExit(e);

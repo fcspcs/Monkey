@@ -1,0 +1,15 @@
+# Build-Ausgaben (reproduzierbar mit build.ps1)
+bin/
+obj/
+dist/
+build/
+src/TimeGuard.Setup/payload/
+
+# .NET / Rider / VS
+*.user
+.vs/
+.idea/
+
+# Betriebssystem
+Thumbs.db
+desktop.ini

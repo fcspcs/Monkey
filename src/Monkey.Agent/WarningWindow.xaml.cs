@@ -18,11 +18,19 @@ public partial class WarningWindow : Window
 {
     private static readonly TimeSpan Lifetime = TimeSpan.FromSeconds(12);
 
+    /// <summary>
+    /// Durchsichtiger Rand zwischen Karte und Fensterkante, damit der Schlagschatten
+    /// ringsum Platz hat - er zeichnet ausserhalb des Layouts, das Fenster ist aber
+    /// genau so gross wie sein Inhalt. Reposition rechnet ihn wieder heraus.
+    /// </summary>
+    private const double ShadowGutter = 20;
+
     private readonly DispatcherTimer _closeTimer;
 
     public WarningWindow(int minutes)
     {
         InitializeComponent();
+        Card.Margin = new Thickness(ShadowGutter);
 
         Headline.Text = minutes == 1 ? "1 minute left" : $"{minutes} minutes left";
         Subline.Text = "of screen time today";
@@ -50,7 +58,7 @@ public partial class WarningWindow : Window
     {
         var area = SystemParameters.WorkArea;
         Left = area.Left + (area.Width - ActualWidth) / 2;
-        Top = area.Top + area.Height * 0.12;
+        Top = area.Top + area.Height * 0.12 - ShadowGutter;
     }
 
     private void OnClick(object sender, MouseButtonEventArgs e) => Close();

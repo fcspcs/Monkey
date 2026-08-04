@@ -6,7 +6,11 @@
 [CmdletBinding()]
 param(
     [string]$Configuration = "Release",
-    [string]$Output = (Join-Path $PSScriptRoot "dist")
+    [string]$Output = (Join-Path $PSScriptRoot "dist"),
+
+    # Ueberschreibt die Version aus Directory.Build.props - beim
+    # Veroeffentlichen kommt sie aus dem Tag.
+    [string]$Version = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -23,6 +27,8 @@ if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
 
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = 1
 $env:DOTNET_NOLOGO = 1
+
+$versionArgs = if ($Version) { @("-p:Version=$Version") } else { @() }
 
 $staging = Join-Path $PSScriptRoot "build\staging"
 $payload = Join-Path $PSScriptRoot "src\Monkey.Setup\payload"
@@ -41,7 +47,7 @@ foreach ($app in @("Monkey.Service", "Monkey.Agent")) {
     Write-Host "Building $app (single file) ..." -ForegroundColor Cyan
     $csproj = Join-Path $PSScriptRoot "src\$app\$app.csproj"
     $out = Join-Path $staging $app
-    dotnet publish $csproj -c $Configuration -o $out --nologo
+    dotnet publish $csproj -c $Configuration -o $out --nologo @versionArgs
     if ($LASTEXITCODE -ne 0) { throw "Build of $app failed." }
 }
 
@@ -52,7 +58,7 @@ Copy-Item (Join-Path $staging "Monkey.Agent\MonkeyAgent.exe") $payload -Force
 # 3. Den Installer bauen - er bettet die Nutzlast ein.
 Write-Host "Building Monkey.Setup (single file with embedded payload) ..." -ForegroundColor Cyan
 $setup = Join-Path $PSScriptRoot "src\Monkey.Setup\Monkey.Setup.csproj"
-dotnet publish $setup -c $Configuration -o $Output --nologo
+dotnet publish $setup -c $Configuration -o $Output --nologo @versionArgs
 if ($LASTEXITCODE -ne 0) { throw "Build of Monkey.Setup failed." }
 
 # 4. Aufraeumen: Nutzlast und Staging werden nicht mehr gebraucht.

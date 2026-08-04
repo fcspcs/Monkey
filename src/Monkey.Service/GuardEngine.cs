@@ -31,6 +31,14 @@ internal sealed class GuardEngine
 
     private DateTimeOffset? _zeroSince;
     private TimeSpan _activeGrace;
+
+    /// <summary>
+    /// Sitzungen, die in der laufenden Schonfrist bereits den Systemdialog bekommen
+    /// haben. Ohne das schickt jeder Tick einen neuen: bei zwei Minuten Frist waeren
+    /// das zwei Dutzend Fenster, die sich stapeln und einzeln weggeklickt werden
+    /// muessen. Mit dem Ende der Schonfrist faellt der Vermerk wieder weg.
+    /// </summary>
+    private readonly HashSet<int> _graceNotified = [];
     private DateTimeOffset _lastSave;
     private double _previousRemainingMinutes = double.MaxValue;
 
@@ -204,20 +212,21 @@ internal sealed class GuardEngine
     {
         if (paused || sessions.Count == 0)
         {
-            _zeroSince = null;
+            ResetGrace();
             _previousRemainingMinutes = double.MaxValue;
             return;
         }
 
         if (_state.BalanceSeconds > 0)
         {
-            _zeroSince = null;
+            ResetGrace();
             WarnOnThreshold(sessions);
             return;
         }
 
         if (_zeroSince is null)
         {
+            ResetGrace();
             _zeroSince = _clock.Now;
 
             // Wer sich mit leerem Konto gerade erst angemeldet hat, bekommt die
@@ -236,10 +245,20 @@ internal sealed class GuardEngine
         if (elapsed < _activeGrace)
         {
             var left = (int)(_activeGrace - elapsed).TotalSeconds;
-            foreach (var session in sessions.Where(NoLiveAgent))
+
+            // Je Sitzung genau einmal pro Schonfrist. Der Dialog steht ohnehin bis
+            // zur Abmeldung; ein zweiter sagt nichts Neues, sondern legt sich nur
+            // obendrauf. Wer den Agent laufen hat, sieht den Countdown im Overlay
+            // und bekommt gar keinen.
+            foreach (var session in sessions)
+            {
+                if (!NoLiveAgent(session) || !_graceNotified.Add(session)) continue;
+
                 Native.SendMessage(session, "Monkey",
                     $"Your screen time is used up.\n\nSigning out in {left} seconds.\n\n" +
                     "Please save your work now.", Math.Max(5, left));
+            }
+
             return;
         }
 
@@ -259,7 +278,17 @@ internal sealed class GuardEngine
                 Log.Write($"Signing out session {session} failed (Win32 {LastError()}).");
         }
 
+        ResetGrace();
+    }
+
+    /// <summary>
+    /// Schonfrist beenden: Uhr zurueck auf null und die Vermerke fuer den
+    /// Systemdialog loeschen, damit die naechste Frist wieder einmal warnen darf.
+    /// </summary>
+    private void ResetGrace()
+    {
         _zeroSince = null;
+        _graceNotified.Clear();
     }
 
     private static int LastError() => System.Runtime.InteropServices.Marshal.GetLastWin32Error();
@@ -346,7 +375,7 @@ internal sealed class GuardEngine
         return WithPassword(request.Password, () =>
         {
             _state.PauseUntil = _clock.Now.AddMinutes(minutes);
-            _zeroSince = null;
+            ResetGrace();
             _store.Save(_state);
             Log.Write($"Paused for {minutes} min until {_state.PauseUntil:HH:mm}.");
             return Response.Success($"Paused until {_state.PauseUntil:HH:mm}.",
@@ -378,7 +407,7 @@ internal sealed class GuardEngine
             if (request.Minutes > 0) _state.EarnedSeconds = 0;
             ClampEarned();
 
-            _zeroSince = null;
+            ResetGrace();
             _previousRemainingMinutes = double.MaxValue;
             _store.Save(_state);
 

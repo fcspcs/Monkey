@@ -67,8 +67,9 @@ you trust. Then "just five more minutes" isn't an argument with yourself at 1am.
 
 ## Install
 
-There is **one file**: [`dist/MonkeySetup.exe`](dist/MonkeySetup.exe). The
-service and the display are tucked inside it.
+There is **one file**:
+**[⬇ Download MonkeySetup.exe](https://github.com/fcspcs/Monkey/releases/latest/download/MonkeySetup.exe)**
+— always the newest release. The service and the display are tucked inside it.
 
 1. Download it, **double-click**, and say yes to the Windows prompt.
 2. Pick **Install**, choose your daily allowance, set a master password. Done.
@@ -78,6 +79,11 @@ password.
 
 > Requires the **.NET 8 Desktop Runtime** (Windows 10/11, 64-bit). If it's
 > missing, Windows offers the download on first launch.
+
+Older versions are on the [releases page](https://github.com/fcspcs/Monkey/releases).
+The build straight from the current source lives in
+[`dist/MonkeySetup.exe`](dist/MonkeySetup.exe) — that one is rebuilt on every
+change and hasn't necessarily been through a release.
 
 
 ---
@@ -136,8 +142,8 @@ cd Monkey
 .\build.ps1     # produces dist\MonkeySetup.exe
 ```
 
-Needs the .NET 8 SDK. The installer in this repository is rebuilt automatically
-on every change (GitHub Actions).
+Needs the .NET 8 SDK. The installer in `dist/` is rebuilt automatically on every
+change, and pushing a tag like `v1.1` publishes it as a release (GitHub Actions).
 
 ---
 

@@ -10,17 +10,21 @@
         ResizeMode="NoResize"
         SizeToContent="WidthAndHeight"
         Focusable="False"
-        UseLayoutRounding="True"
-        Cursor="Hand"
-        MouseLeftButtonUp="OnClick"
-        ToolTip="Click to open the control panel">
+        UseLayoutRounding="True">
 
+    <!-- Der Rand um den Kasten wird in OverlayWindow.ShadowGutter gesetzt: das
+         Fenster ist genau so gross wie sein Inhalt, ein Schlagschatten zeichnet
+         aber ausserhalb davon und wuerde sonst an der Fensterkante abgeschnitten.
+         Reposition rechnet den Rand wieder heraus, damit der Kasten trotzdem im
+         gewohnten Abstand zur Bildschirmecke sitzt. -->
     <Border x:Name="Panel"
             CornerRadius="12"
             Padding="16,9"
             Background="#E0101014"
             BorderBrush="#33FFFFFF"
-            BorderThickness="1">
+            BorderThickness="1"
+            Cursor="Hand"
+            MouseLeftButtonUp="OnClick">
         <Border.Effect>
             <DropShadowEffect BlurRadius="16" ShadowDepth="2" Opacity="0.5" Color="Black"/>
         </Border.Effect>
@@ -44,16 +48,20 @@
                  Overlay steht. Der Rahmen ist der Vorhang: seine Hoehe wird
                  animiert, das Bild darin bleibt gleich gross und wird beschnitten.
                  Weil das Fenster oben verankert ist, waechst es nach unten - der
-                 Zeiger bleibt darin und die Anzeige springt nicht. -->
+                 Zeiger bleibt darin und die Anzeige springt nicht.
+                 Polster und Abstaende sind so gewaehlt, dass der Schatten des
+                 Affen ringsum in den Vorhang passt - sonst schnitte der Vorhang
+                 ihn an drei Seiten ab, waehrend er oben stehen bleibt. -->
             <Border x:Name="HoverIconBox"
                     Height="0"
                     Opacity="0"
                     ClipToBounds="True"
+                    Padding="6,0"
                     HorizontalAlignment="Center">
                 <Image x:Name="HoverIcon"
                        Source="Assets/monkey.png"
                        Width="38" Height="38"
-                       Margin="0,7,0,0"
+                       Margin="0,7,0,5"
                        VerticalAlignment="Top"
                        IsHitTestVisible="False"
                        RenderOptions.BitmapScalingMode="HighQuality"/>

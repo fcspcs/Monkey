@@ -13,7 +13,11 @@
         SizeToContent="WidthAndHeight"
         UseLayoutRounding="True">
 
-    <Border CornerRadius="14"
+    <!-- Der Rand um die Karte wird in WarningWindow.ShadowGutter gesetzt: das
+         Fenster ist genau so gross wie sein Inhalt, der Schlagschatten zeichnet
+         aber ausserhalb davon und waere sonst an der Fensterkante abgeschnitten. -->
+    <Border x:Name="Card"
+            CornerRadius="14"
             Padding="34,22"
             Background="#F2141418"
             BorderBrush="#55FFFFFF"

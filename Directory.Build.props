@@ -1,0 +1,16 @@
+<Project>
+
+  <!--
+    Gemeinsame Angaben fuer alle Projekte. Die Version steht hier, damit Dienst,
+    Agent und Installer dieselbe tragen und in den Dateieigenschaften auftaucht,
+    welcher Stand installiert ist.
+
+    Beim Veroeffentlichen setzt der Tag sie ohnehin (build.ps1 -Version); dieser
+    Wert gilt fuer alles, was daneben gebaut wird.
+  -->
+  <PropertyGroup>
+    <Version>1.1.0</Version>
+    <Product>Monkey</Product>
+  </PropertyGroup>
+
+</Project>

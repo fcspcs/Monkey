@@ -23,6 +23,14 @@ public partial class OverlayWindow : Window
 {
     private const double EdgeMargin = 16;
 
+    /// <summary>
+    /// Durchsichtiger Rand zwischen Kasten und Fensterkante. Das Fenster ist genau
+    /// so gross wie sein Inhalt, ein Schlagschatten zeichnet aber ausserhalb davon -
+    /// ohne diesen Rand bliebe vom Schatten nur der Teil uebrig, der zufaellig noch
+    /// ins Fenster faellt. Reposition rechnet ihn wieder heraus.
+    /// </summary>
+    private const double ShadowGutter = 14;
+
     /// <summary>Farbwert fuer die Ampel in dunklen Toenen.</summary>
     public const string AutoDark = "auto-dark";
     /// <summary>Farbwert fuer die Ampel in hellen Toenen.</summary>
@@ -84,6 +92,7 @@ public partial class OverlayWindow : Window
     public OverlayWindow()
     {
         InitializeComponent();
+        Panel.Margin = new Thickness(ShadowGutter);
         SizeChanged += (_, _) => Reposition();
 
         _hoverTimer = new DispatcherTimer { Interval = HoverPollInterval };
@@ -121,6 +130,10 @@ public partial class OverlayWindow : Window
     /// Haengt das Overlay in die gewaehlte Ecke. Weil sich die Groesse aendert,
     /// sobald das Symbol ein- oder ausfaehrt, wird von der jeweils verankerten
     /// Kante aus gerechnet - unten waechst es dann nach oben statt aus dem Bild.
+    ///
+    /// Gemessen wird der Kasten, nicht das Fenster: der Rand fuer den Schatten
+    /// wird herausgerechnet, sonst rutschte das Overlay um dessen Breite von der
+    /// Ecke weg.
     /// </summary>
     private void Reposition()
     {
@@ -129,8 +142,10 @@ public partial class OverlayWindow : Window
         var left = Corner is OverlayCorner.TopLeft or OverlayCorner.BottomLeft;
         var top = Corner is OverlayCorner.TopLeft or OverlayCorner.TopRight;
 
-        Left = left ? area.Left + EdgeMargin : area.Right - ActualWidth - EdgeMargin;
-        Top = top ? area.Top + EdgeMargin : area.Bottom - ActualHeight - EdgeMargin;
+        var inset = EdgeMargin - ShadowGutter;
+
+        Left = left ? area.Left + inset : area.Right - ActualWidth - inset;
+        Top = top ? area.Top + inset : area.Bottom - ActualHeight - inset;
     }
 
     public void KeepOnTop()
@@ -170,8 +185,11 @@ public partial class OverlayWindow : Window
         bool inside;
         try
         {
-            var local = PointFromScreen(new Point(cursor.X, cursor.Y));
-            inside = local.X >= 0 && local.Y >= 0 && local.X <= ActualWidth && local.Y <= ActualHeight;
+            // Gegen den Kasten geprueft, nicht gegen das Fenster: der Rand fuer den
+            // Schatten gehoert nicht zur Anzeige und soll sie auch nicht umschalten.
+            var local = Panel.PointFromScreen(new Point(cursor.X, cursor.Y));
+            inside = local.X >= 0 && local.Y >= 0
+                     && local.X <= Panel.ActualWidth && local.Y <= Panel.ActualHeight;
         }
         catch (InvalidOperationException)
         {
@@ -190,8 +208,12 @@ public partial class OverlayWindow : Window
         Paint();
     }
 
-    /// <summary>Gesamthoehe des ausgefahrenen Symbols samt Abstand darueber.</summary>
-    private const double HoverIconHeight = 45;
+    /// <summary>
+    /// Gesamthoehe des ausgefahrenen Symbols: Abstand darueber, Bild, und darunter
+    /// noch etwas Luft fuer den Schatten - der Vorhang beschneidet alles, was ueber
+    /// diese Hoehe hinausragt.
+    /// </summary>
+    private const double HoverIconHeight = 50;
 
     private static readonly Duration HoverFade = new(TimeSpan.FromMilliseconds(160));
 

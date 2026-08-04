@@ -12,14 +12,13 @@ password.
 
 ---
 
-## Why a monkey?
+## Why monkey?
 
 Because monkey has had enough.
 
 Enough of endless feeds engineered by very smart people whose actual job is to
 keep monkey scrolling. Enough of opening the laptop "for five minutes" and
-resurfacing two hours later with nothing to show for it. And frankly, enough of
-Italian brainrot — no more tralalero tralala, no more bombardiro crocodilo.
+resurfacing two hours later with nothing to show for it. No more tralalero tralala, no more bombardiro crocodilo.
 Monkey does not need to know what the tung tung tung sahur is. Monkey wants his
 afternoon back.
 
@@ -33,7 +32,7 @@ Most screen time tools hand you the same thing every day: two hours today, two
 hours tomorrow. Skip a day and you get nothing for it. Burn through it by lunch
 and your evening is gone.
 
-Monkey treats it like a **bank account** instead:
+Monkey treats it like a **Piggy Bank** instead:
 
 - Every day a fresh allowance lands in the account (**30 minutes** by default).
 - **Whatever you don't spend stays there** and piles up — up to a cap.
@@ -45,9 +44,7 @@ That's the part that matters. You're not just being capped, you're learning to
 lose time, you only move it.
 
 The second idea is **not doing this alone**. Give the master password to someone
-you trust. Then "just five more minutes" isn't an argument with yourself at 1am,
-it's a sentence you have to say out loud to another human. That small bit of
-friction is the whole point.
+you trust. Then "just five more minutes" isn't an argument with yourself at 1am.
 
 ---
 
@@ -82,12 +79,6 @@ password.
 > Requires the **.NET 8 Desktop Runtime** (Windows 10/11, 64-bit). If it's
 > missing, Windows offers the download on first launch.
 
-> **The master password is the only key.** Keep it off this machine — or hand it
-> to your person of trust. That's rather the idea.
-
-> **Coming from the older "TimeGuard" version?** Remove that one first with the
-> old `TimeGuardSetup.exe` (option 2, old password), otherwise its service keeps
-> signing you out. The Monkey installer notices and reminds you.
 
 ---
 
@@ -126,20 +117,7 @@ with a balance so fat the whole thing stops meaning anything.
 
 ---
 
-## How it's put together
 
-```
-MonkeyService.exe   Windows service (LocalSystem). Counts, decides, checks the
-                    password, signs you out, protects itself.
-        ▲  named pipe
-        ▼
-MonkeyAgent.exe     Per user: overlay, tray icon, warning, control panel.
-                    Display only — it has no authority of its own.
-```
-
-The master password is stored only as a PBKDF2-SHA256 hash and is checked
-**exclusively inside the service**. The balance is machine-wide, not per user
-account.
 
 **Being honest about how far this goes:** on Windows a local administrator isn't
 a security boundary — that's Microsoft's own position, and no program without a

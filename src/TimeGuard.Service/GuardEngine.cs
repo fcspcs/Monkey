@@ -244,23 +244,20 @@ internal sealed class GuardEngine
     private void WarnOnThreshold(List<int> sessions)
     {
         var remaining = _state.BalanceSeconds / 60.0;
+        var threshold = _state.Config.WarnMinutes;
 
-        foreach (var threshold in _state.Config.WarnAtMinutes.OrderByDescending(x => x))
+        if (threshold > 0 && _previousRemainingMinutes > threshold && remaining <= threshold)
         {
-            if (_previousRemainingMinutes > threshold && remaining <= threshold)
-            {
-                _activeWarning = threshold;
-                _warningIssuedAt = _clock.Now;
+            _activeWarning = threshold;
+            _warningIssuedAt = _clock.Now;
 
-                // Ohne laufenden Agent gibt es kein Warnfenster - dann der
-                // Systemdialog als Rueckfallebene.
-                foreach (var session in sessions.Where(NoLiveAgent))
-                    Native.SendMessage(session, "TimeGuard",
-                        $"Noch {threshold} Minute(n) Computerzeit.");
+            // Ohne laufenden Agent gibt es kein Warnfenster - dann der
+            // Systemdialog als Rueckfallebene.
+            foreach (var session in sessions.Where(NoLiveAgent))
+                Native.SendMessage(session, "TimeGuard",
+                    $"Noch {threshold} Minute(n) Computerzeit.");
 
-                Log.Write($"Warnschwelle {threshold} min erreicht.");
-                break;
-            }
+            Log.Write($"Warnschwelle {threshold} min erreicht.");
         }
 
         _previousRemainingMinutes = remaining;
@@ -371,18 +368,17 @@ internal sealed class GuardEngine
             config.CapMinutes = Math.Clamp(incoming.CapMinutes, config.DailyGrantMinutes, 100 * 24 * 60);
             config.GraceSeconds = Math.Clamp(incoming.GraceSeconds, 10, 3600);
             config.LoginGraceSeconds = Math.Clamp(incoming.LoginGraceSeconds, 10, 3600);
-            config.MaxManualGrantMinutes = Math.Clamp(incoming.MaxManualGrantMinutes, 0, 24 * 60);
             config.MaxPauseMinutes = Math.Clamp(incoming.MaxPauseMinutes, 1, 30 * 24 * 60);
             config.PauseOnLock = incoming.PauseOnLock;
             config.PauseOnScreensaver = incoming.PauseOnScreensaver;
+            config.WarnMinutes = Math.Clamp(incoming.WarnMinutes, 1, 24 * 60);
 
-            if (incoming.WarnAtMinutes.Length > 0)
-                config.WarnAtMinutes = incoming.WarnAtMinutes
-                    .Where(x => x is > 0 and <= 24 * 60).Distinct().OrderByDescending(x => x).ToArray();
+            // MaxManualGrantMinutes ist bewusst NICHT enthalten - es wird nur beim
+            // Installieren festgelegt und laesst sich hier nicht aendern.
 
             _store.Save(_state);
             Log.Write($"Einstellungen geaendert: {config.DailyGrantMinutes} min/Tag, Deckel {config.CapMinutes} min, " +
-                      $"Warnung bei {string.Join("/", config.WarnAtMinutes)} min.");
+                      $"Warnung bei {config.WarnMinutes} min.");
             return Response.Success("Einstellungen gespeichert.", BuildStatus(request.SessionId));
         });
     }

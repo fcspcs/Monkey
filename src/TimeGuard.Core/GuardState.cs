@@ -14,8 +14,8 @@ public sealed class GuardConfig
     /// </summary>
     public int CapMinutes { get; set; } = 240;
 
-    /// <summary>Restminuten, bei denen ein Warnfenster erscheint.</summary>
-    public int[] WarnAtMinutes { get; set; } = [10];
+    /// <summary>Restminuten, bei denen das Warnfenster erscheint.</summary>
+    public int WarnMinutes { get; set; } = 10;
 
     /// <summary>
     /// Schonfrist ab Erreichen von 0 waehrend einer laufenden Sitzung, bevor
@@ -44,12 +44,8 @@ public sealed class GuardConfig
     /// <summary>Laengste am Stueck erlaubte Master-Pause.</summary>
     public int MaxPauseMinutes { get; set; } = 480;
 
-    public GuardConfig Clone()
-    {
-        var copy = (GuardConfig)MemberwiseClone();
-        copy.WarnAtMinutes = (int[])WarnAtMinutes.Clone();
-        return copy;
-    }
+    // Alle Felder sind Werttypen - eine flache Kopie genuegt.
+    public GuardConfig Clone() => (GuardConfig)MemberwiseClone();
 }
 
 public sealed class GuardState

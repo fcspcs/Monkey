@@ -1,9 +1,13 @@
 # Build-Ausgaben (reproduzierbar mit build.ps1)
 bin/
 obj/
-dist/
 build/
 src/TimeGuard.Setup/payload/
+
+# dist wird ignoriert - AUSSER der fertigen Installer-Datei, die absichtlich
+# im Repo liegt, damit sie sich weitergeben laesst.
+dist/*
+!dist/TimeGuardSetup.exe
 
 # .NET / Rider / VS
 *.user

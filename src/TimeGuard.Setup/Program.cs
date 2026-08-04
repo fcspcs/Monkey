@@ -103,6 +103,9 @@ internal static class Program
         var cap = AskInt("Hoechstguthaben (Deckel) in Minuten", Math.Max(daily, 240));
         if (cap < daily) cap = daily;
 
+        // Feste Vorgabe, spaeter im Programm nicht mehr aenderbar.
+        var maxGrant = AskInt("Nachlegen je Vorgang hoechstens (Minuten)", 240);
+
         Console.WriteLine();
         Console.WriteLine("Master-Passwort festlegen. Es ist der einzige Schluessel -");
         Console.WriteLine("bewahre es ausserhalb des Rechners auf (Handy, Zettel).");
@@ -119,7 +122,7 @@ internal static class Program
         ExtractPayload(TargetDir);
 
         Step("Master-Passwort und Grundwerte schreiben");
-        WriteInitialState(password, daily, cap);
+        WriteInitialState(password, daily, cap, maxGrant);
 
         Step("Dienst anlegen");
         var serviceExe = Path.Combine(TargetDir, "TimeGuardService.exe");
@@ -139,8 +142,7 @@ internal static class Program
         Section("Fertig");
         Console.WriteLine($"  Tagesbudget      : {daily} Minuten");
         Console.WriteLine($"  Hoechstguthaben  : {cap} Minuten");
-        Console.WriteLine($"  Warnung          : bei 10 Minuten Restzeit");
-        Console.WriteLine($"  Nachlegen        : max. 4 Stunden pro Vorgang, beliebig oft");
+        Console.WriteLine($"  Nachlegen        : max. {maxGrant} Minuten pro Vorgang, beliebig oft (fest)");
         Console.WriteLine();
         Console.WriteLine("  Restzeit         : Overlay oben rechts");
         Console.WriteLine("  Master-Steuerung : Doppelklick auf das Tray-Symbol");
@@ -276,7 +278,7 @@ internal static class Program
         }
     }
 
-    private static void WriteInitialState(string password, int daily, int cap)
+    private static void WriteInitialState(string password, int daily, int cap, int maxGrant)
     {
         Directory.CreateDirectory(Paths.DataDir);
 
@@ -287,6 +289,7 @@ internal static class Program
         state.PasswordIterations = iterations;
         state.Config.DailyGrantMinutes = Math.Clamp(daily, 0, 24 * 60);
         state.Config.CapMinutes = Math.Clamp(cap, state.Config.DailyGrantMinutes, 100 * 24 * 60);
+        state.Config.MaxManualGrantMinutes = Math.Clamp(maxGrant, 0, 24 * 60);
         state.TrustedNow = DateTimeOffset.Now;
         // Balance bleibt 0; der Dienst schreibt beim ersten Start die Erstgutschrift.
 

@@ -63,15 +63,14 @@ public partial class MasterWindow : Window
         if (status.Config is { } config)
         {
             GrantBudgetText.Text =
-                $"Pro Vorgang höchstens {FormatMinutes(config.MaxManualGrantMinutes)} – beliebig oft. " +
-                "Abziehen ist unbegrenzt möglich.";
+                $"Nachlegen: pro Vorgang höchstens {FormatMinutes(config.MaxManualGrantMinutes)} " +
+                "(beim Installieren festgelegt). Abziehen ist unbegrenzt.";
 
             DailyMinutes.Text = Text(config.DailyGrantMinutes);
             CapMinutes.Text = Text(config.CapMinutes);
+            WarnMinutes.Text = Text(config.WarnMinutes);
             GraceSeconds.Text = Text(config.GraceSeconds);
             LoginGraceSeconds.Text = Text(config.LoginGraceSeconds);
-            MaxGrantMinutes.Text = Text(config.MaxManualGrantMinutes);
-            WarnAtMinutes.Text = string.Join(", ", config.WarnAtMinutes);
             PauseOnLock.IsChecked = config.PauseOnLock;
             PauseOnScreensaver.IsChecked = config.PauseOnScreensaver;
         }
@@ -104,17 +103,6 @@ public partial class MasterWindow : Window
 
     private async void OnMinus30(object sender, RoutedEventArgs e) => await AddMinutesAsync(-30);
 
-    private async void OnAddTime(object sender, RoutedEventArgs e)
-    {
-        if (!TryReadInt(AddMinutes.Text, out var minutes) || minutes == 0)
-        {
-            Show(false, "Bitte eine Minutenzahl ungleich null angeben.");
-            return;
-        }
-
-        await AddMinutesAsync(minutes);
-    }
-
     private async Task AddMinutesAsync(int minutes) =>
         await SendAsync(new Request
         {
@@ -127,9 +115,9 @@ public partial class MasterWindow : Window
     {
         if (!TryReadInt(DailyMinutes.Text, out var daily) ||
             !TryReadInt(CapMinutes.Text, out var cap) ||
+            !TryReadInt(WarnMinutes.Text, out var warn) ||
             !TryReadInt(GraceSeconds.Text, out var grace) ||
-            !TryReadInt(LoginGraceSeconds.Text, out var loginGrace) ||
-            !TryReadInt(MaxGrantMinutes.Text, out var maxGrant))
+            !TryReadInt(LoginGraceSeconds.Text, out var loginGrace))
         {
             Show(false, "Bitte in allen Zahlenfeldern ganze Zahlen eintragen.");
             return;
@@ -141,17 +129,9 @@ public partial class MasterWindow : Window
             return;
         }
 
-        var warnAt = WarnAtMinutes.Text
-            .Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(part => TryReadInt(part, out var value) ? value : -1)
-            .Where(value => value > 0)
-            .Distinct()
-            .OrderByDescending(value => value)
-            .ToArray();
-
-        if (warnAt.Length == 0)
+        if (warn <= 0)
         {
-            Show(false, "Bitte mindestens eine Warnschwelle angeben, zum Beispiel: 10");
+            Show(false, "Die Warnung braucht eine Restminutenzahl größer als 0.");
             return;
         }
 
@@ -163,14 +143,31 @@ public partial class MasterWindow : Window
             {
                 DailyGrantMinutes = daily,
                 CapMinutes = cap,
+                WarnMinutes = warn,
                 GraceSeconds = grace,
                 LoginGraceSeconds = loginGrace,
-                MaxManualGrantMinutes = maxGrant,
-                WarnAtMinutes = warnAt,
                 PauseOnLock = PauseOnLock.IsChecked == true,
                 PauseOnScreensaver = PauseOnScreensaver.IsChecked == true,
             },
         });
+    }
+
+    /// <summary>
+    /// Blendet den Bereich zum Passwortwechsel ein - aber nur, wenn oben das
+    /// Master-Passwort eingegeben ist. Ob es stimmt, prüft der Dienst beim
+    /// eigentlichen Wechsel.
+    /// </summary>
+    private void OnRevealChangePassword(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(MasterPassword.Password))
+        {
+            Show(false, "Bitte zuerst oben das Master-Passwort eingeben.");
+            return;
+        }
+
+        ChangePasswordGroup.Visibility = Visibility.Visible;
+        RevealChangePasswordButton.IsEnabled = false;
+        NewPassword.Focus();
     }
 
     private async void OnChangePassword(object sender, RoutedEventArgs e)
@@ -199,6 +196,8 @@ public partial class MasterWindow : Window
             NewPassword.Clear();
             NewPasswordRepeat.Clear();
             MasterPassword.Clear();
+            ChangePasswordGroup.Visibility = Visibility.Collapsed;
+            RevealChangePasswordButton.IsEnabled = true;
         }
     }
 
@@ -227,7 +226,6 @@ public partial class MasterWindow : Window
         ResumeButton.IsEnabled = !busy;
         Plus30Button.IsEnabled = !busy;
         Minus30Button.IsEnabled = !busy;
-        AddButton.IsEnabled = !busy;
         SaveConfigButton.IsEnabled = !busy;
         ChangePasswordButton.IsEnabled = !busy;
         Cursor = busy ? System.Windows.Input.Cursors.Wait : null;

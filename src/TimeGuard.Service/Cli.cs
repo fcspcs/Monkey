@@ -124,7 +124,7 @@ internal static class Cli
         Console.WriteLine($"Guthaben            : {(int)span.TotalHours}:{span.Minutes:00}:{span.Seconds:00}");
         Console.WriteLine($"Tagesbudget         : {state.Config.DailyGrantMinutes} min");
         Console.WriteLine($"Deckel              : {state.Config.CapMinutes} min");
-        Console.WriteLine($"Warnung bei         : {string.Join(", ", state.Config.WarnAtMinutes)} min");
+        Console.WriteLine($"Warnung bei         : {state.Config.WarnMinutes} min");
         Console.WriteLine($"Letzte Gutschrift   : {state.LastAccrualDate}");
         Console.WriteLine($"Passwort gesetzt    : {(state.HasPassword ? "ja" : "NEIN")}");
         Console.WriteLine($"Zeitmanipulationen  : {state.ClockTamperEvents}");

@@ -27,7 +27,7 @@
   <!-- Bilder fuer die Oberflaeche (Warnfenster, Master-Fenster). -->
   <ItemGroup>
     <Resource Include="..\..\assets\monkey.png" Link="Assets\monkey.png" />
-    <Resource Include="..\..\assets\monkey-fries.png" Link="Assets\monkey-fries.png" />
+    <Resource Include="..\..\assets\evolution\*.png" Link="Assets\Evolution\%(Filename)%(Extension)" />
   </ItemGroup>
 
   <!--

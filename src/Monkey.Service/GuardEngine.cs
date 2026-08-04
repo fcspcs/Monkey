@@ -86,9 +86,16 @@ internal sealed class GuardEngine
             if (!paused && counting.Count > 0)
             {
                 _state.BalanceSeconds -= awake.TotalSeconds;
+
+                // Verbrauchte Zeit zehrt auch am Ersparten - der Affe schrumpft
+                // wieder, wenn das Gesparte aufgebraucht wird.
+                _state.EarnedSeconds -= awake.TotalSeconds;
+
                 foreach (var session in counting)
                     _sessionElapsed[session] = _sessionElapsed.GetValueOrDefault(session) + awake.TotalSeconds;
             }
+
+            ClampEarned();
 
             Enforce(paused, counting, freshLogin);
 
@@ -139,7 +146,23 @@ internal sealed class GuardEngine
         // Liegt das Guthaben durch eine manuelle Gutschrift bereits ueber dem Deckel,
         // wird es nicht gekuerzt - nur nicht weiter erhoeht.
         if (_state.BalanceSeconds >= cap) return;
+
+        var before = _state.BalanceSeconds;
         _state.BalanceSeconds = Math.Min(_state.BalanceSeconds + grant, cap);
+
+        // Nur der tatsaechlich gutgeschriebene Teil zaehlt als erspart.
+        _state.EarnedSeconds += _state.BalanceSeconds - before;
+        ClampEarned();
+    }
+
+    /// <summary>
+    /// Das Ersparte kann nie groesser sein als das Guthaben, aus dem es stammt -
+    /// und nie groesser als der Deckel.
+    /// </summary>
+    private void ClampEarned()
+    {
+        var cap = _state.Config.CapMinutes * 60.0;
+        _state.EarnedSeconds = Math.Clamp(_state.EarnedSeconds, 0, Math.Max(0, Math.Min(_state.BalanceSeconds, cap)));
     }
 
     private bool IsPaused()
@@ -347,11 +370,20 @@ internal sealed class GuardEngine
                     "Need more? Just do it again.");
 
             _state.BalanceSeconds = Math.Max(0, _state.BalanceSeconds + request.Minutes * 60.0);
+
+            // Zeit dazukaufen setzt die Evolution ganz auf Stufe 1 zurueck - gespart
+            // ist nur, was aus den Tagesgutschriften stammt. Zeit abziehen setzt
+            // nicht zurueck, senkt das Ersparte aber ueber ClampEarned entsprechend
+            // mit: was man wegwirft, hat man eben auch nicht mehr gespart.
+            if (request.Minutes > 0) _state.EarnedSeconds = 0;
+            ClampEarned();
+
             _zeroSince = null;
             _previousRemainingMinutes = double.MaxValue;
             _store.Save(_state);
 
-            Log.Write($"Balance changed manually by {request.Minutes:+#;-#;0} min, now {Format(_state.BalanceSeconds)}.");
+            Log.Write($"Balance changed manually by {request.Minutes:+#;-#;0} min, now {Format(_state.BalanceSeconds)}" +
+                      $"{(request.Minutes > 0 ? " - evolution reset to stage 1" : string.Empty)}.");
 
             return Response.Success($"Balance is now {Format(_state.BalanceSeconds)}.",
                 BuildStatus(request.SessionId));
@@ -458,6 +490,7 @@ internal sealed class GuardEngine
                 ? warning
                 : null,
             MaxManualGrantMinutes = _state.Config.MaxManualGrantMinutes,
+            EvolutionStage = _state.EvolutionStage,
             DailyGrantMinutes = _state.Config.DailyGrantMinutes,
             CapMinutes = _state.Config.CapMinutes,
             ClockTamperEvents = _state.ClockTamperEvents,

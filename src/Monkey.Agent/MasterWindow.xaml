@@ -3,7 +3,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Monkey – Control Panel"
-        Width="690" Height="700"
+        Width="700" Height="850"
         MinWidth="430" MinHeight="360"
         ResizeMode="CanResize"
         SizeToContent="Manual"
@@ -44,22 +44,22 @@
         </Style>
     </Window.Resources>
 
-    <Grid>
+    <Grid x:Name="RootGrid">
         <Grid.ColumnDefinitions>
             <ColumnDefinition x:Name="GimmickColumn" Width="Auto"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
-        <!-- Reine Zierde: haengt links am Layout, ohne eigenen Hintergrund und
-             ohne Beschriftung. Nimmt keine Mausklicks an und wird bei schmalem
-             Fenster ausgeblendet, damit das Layout nicht leidet. -->
+        <!-- Die Evolutionsstufe als volle Seitenspalte: randlos, ueber die ganze
+             Fensterhoehe, ohne Beschriftung und ohne eigenen Hintergrund. Die
+             Breite wird im Code aus der Hoehe berechnet, damit das Seitenver-
+             haeltnis der Vorlage exakt erhalten bleibt und nichts verzerrt oder
+             beschnitten wird. Nimmt keine Mausklicks an. -->
         <Image x:Name="Gimmick"
                Grid.Column="0"
-               Source="Assets/monkey-fries.png"
-               Width="140"
-               Margin="12,0,0,20"
-               VerticalAlignment="Bottom"
-               HorizontalAlignment="Center"
+               Stretch="UniformToFill"
+               VerticalAlignment="Stretch"
+               HorizontalAlignment="Left"
                IsHitTestVisible="False"
                RenderOptions.BitmapScalingMode="HighQuality"/>
 

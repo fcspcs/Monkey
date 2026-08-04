@@ -68,6 +68,23 @@ friction is the whole point.
 
 ---
 
+## Monkey evolves
+
+Down the side of the control panel there's a monkey, and he grows with your
+savings. He starts out small, sitting in a box of fries. Save up and he works his
+way through five stages until he's a full-blown gorilla standing on the wreckage
+of that box.
+
+The stages are tied to how much you've **actually saved** — a fifth of your cap
+per stage, so the last one takes four fifths of a full balance. It's meant to be
+a bit of a haul.
+
+And no, you can't buy your way there: **topping up with the master password
+knocks him straight back to stage one.** Only time you genuinely didn't spend
+counts.
+
+---
+
 ## Install
 
 There is **one file**: [`dist/MonkeySetup.exe`](dist/MonkeySetup.exe). The

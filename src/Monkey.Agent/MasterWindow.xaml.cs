@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Monkey.Core;
 
@@ -55,9 +56,15 @@ public partial class MasterWindow : Window
         Loaded += async (_, _) => { UpdateGimmick(); await RefreshAsync(); };
     }
 
+    /// <summary>Seitenverhaeltnis der Evolutionsbilder (158 x 819).</summary>
+    private const double GimmickAspect = 158.0 / 819.0;
+
+    private int _gimmickStage;
+
     /// <summary>
-    /// Die Zierde links verschwindet, sobald das Fenster schmal wird - die
-    /// Bedienelemente haben dann Vorrang.
+    /// Haelt die Seitenspalte auf genau der Breite, die zur Fensterhoehe passt -
+    /// so fuellt das Bild die Spalte randlos aus, ohne verzerrt oder beschnitten
+    /// zu werden. Bei schmalem Fenster weicht es den Bedienelementen.
     /// </summary>
     private void UpdateGimmick()
     {
@@ -65,7 +72,33 @@ public partial class MasterWindow : Window
         var show = ActualWidth >= needed;
 
         Gimmick.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        GimmickColumn.Width = show ? GridLength.Auto : new GridLength(0);
+
+        if (!show)
+        {
+            GimmickColumn.Width = new GridLength(0);
+            return;
+        }
+
+        var height = RootGrid.ActualHeight;
+        if (height <= 0) return;
+
+        Gimmick.Width = Math.Round(height * GimmickAspect);
+        GimmickColumn.Width = GridLength.Auto;
+    }
+
+    /// <summary>
+    /// Wechselt das Bild, wenn eine andere Evolutionsstufe erreicht ist. Der Wechsel
+    /// passiert nur bei echter Aenderung, damit die Anzeige nicht bei jedem
+    /// Statusabruf neu laedt.
+    /// </summary>
+    private void UpdateEvolution(int stage)
+    {
+        stage = Math.Clamp(stage, 1, 5);
+        if (stage == _gimmickStage) return;
+
+        _gimmickStage = stage;
+        Gimmick.Source = new BitmapImage(
+            new Uri($"pack://application:,,,/Assets/Evolution/stage{stage}.png", UriKind.Absolute));
     }
 
     /// <summary>
@@ -99,6 +132,8 @@ public partial class MasterWindow : Window
             StateText.Text = "The service is not responding. Is MonkeySrv running?";
             return;
         }
+
+        UpdateEvolution(status.EvolutionStage);
 
         BalanceText.Text = $"Balance: {FormatSpan(status.BalanceSeconds)}";
 

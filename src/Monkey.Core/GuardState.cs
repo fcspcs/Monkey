@@ -61,6 +61,14 @@ public sealed class GuardState
     /// <summary>Verbleibendes Guthaben in Sekunden.</summary>
     public double BalanceSeconds { get; set; }
 
+    /// <summary>
+    /// Der Teil des Guthabens, der wirklich erspart wurde - also aus den
+    /// Tagesgutschriften stammt und nicht per Master-Passwort nachgelegt wurde.
+    /// Steuert allein die Evolutionsstufe: Wer sich Zeit dazukauft, faengt beim
+    /// kleinen Affen wieder an.
+    /// </summary>
+    public double EarnedSeconds { get; set; }
+
     /// <summary>Letzter Kalendertag (lokal), fuer den gutgeschrieben wurde.</summary>
     public DateOnly? LastAccrualDate { get; set; }
 
@@ -80,6 +88,27 @@ public sealed class GuardState
 
     [JsonIgnore]
     public bool HasPassword => !string.IsNullOrEmpty(PasswordHash);
+
+    /// <summary>Anzahl der Evolutionsstufen (1 = kleiner Affe, 5 = Gorilla).</summary>
+    public const int EvolutionStages = 5;
+
+    /// <summary>
+    /// Stufe aus dem Ersparten. Die letzte Stufe verlangt vier Fuenftel des
+    /// Deckels - sie soll ausdruecklich schwer zu erreichen sein.
+    /// </summary>
+    [JsonIgnore]
+    public int EvolutionStage
+    {
+        get
+        {
+            var cap = Config.CapMinutes * 60.0;
+            if (cap <= 0) return 1;
+
+            var ratio = Math.Clamp(EarnedSeconds / cap, 0, 1);
+            var stage = 1 + (int)(ratio * EvolutionStages);
+            return Math.Clamp(stage, 1, EvolutionStages);
+        }
+    }
 
     public static readonly JsonSerializerOptions JsonOptions = new()
     {

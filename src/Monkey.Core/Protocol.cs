@@ -64,6 +64,9 @@ public sealed class StatusDto
     /// <summary>Wie viel per Master-Passwort pro Vorgang nachgelegt werden darf.</summary>
     public int MaxManualGrantMinutes { get; set; }
 
+    /// <summary>Evolutionsstufe des Affen, 1 bis 5 - allein aus dem Ersparten.</summary>
+    public int EvolutionStage { get; set; } = 1;
+
     public int DailyGrantMinutes { get; set; }
     public int CapMinutes { get; set; }
     public int ClockTamperEvents { get; set; }

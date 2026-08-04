@@ -1,7 +1,13 @@
 name: Publish release
 
-# Ein Tag wie v1.1 loest die Veroeffentlichung aus: Installer aus dem getaggten
-# Stand bauen, Release anlegen, MonkeySetup.exe daranhaengen.
+# Veroeffentlicht eine Version: Installer aus dem gewaehlten Stand bauen,
+# Release anlegen, MonkeySetup.exe daranhaengen.
+#
+# Zwei Wege fuehren hierher:
+#   - Einen Tag wie v1.1 pushen.
+#   - Diesen Ablauf von Hand starten ("Run workflow") und die Version angeben.
+#     Den Tag legt dann GitHub selbst an - so laesst sich auch ohne Git vor Ort
+#     veroeffentlichen.
 #
 # Der Downloadlink in der README zeigt auf das jeweils neueste Release
 # (releases/latest/download/MonkeySetup.exe) - der Dateiname muss deshalb
@@ -12,9 +18,16 @@ on:
     tags: [ 'v*' ]
   workflow_dispatch:
     inputs:
-      tag:
-        description: 'Vorhandener Tag, der veroeffentlicht werden soll, z. B. v1.1'
+      version:
+        description: 'Version, z. B. v1.1 - der Tag wird angelegt, falls es ihn noch nicht gibt'
         required: true
+      ref:
+        description: 'Stand, aus dem gebaut wird (Branch oder Commit)'
+        required: false
+        default: main
+      notes:
+        description: 'Text des Releases. Leer: Beschreibung des Tags, sonst die Liste der Aenderungen'
+        required: false
 
 permissions:
   contents: write
@@ -23,15 +36,16 @@ jobs:
   release:
     runs-on: windows-latest
     env:
-      TAG: ${{ inputs.tag || github.ref_name }}
+      TAG: ${{ inputs.version || github.ref_name }}
+      NOTES: ${{ inputs.notes }}
 
     steps:
       - name: Check out
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag || github.ref_name }}
-          # Vollstaendig, damit die Beschreibung des Tags als Release-Text
-          # ausgelesen werden kann.
+          ref: ${{ inputs.ref || github.ref_name }}
+          # Vollstaendig, damit die Beschreibung eines vorhandenen Tags als
+          # Release-Text ausgelesen werden kann.
           fetch-depth: 0
 
       - name: Set up .NET 8
@@ -43,8 +57,7 @@ jobs:
         shell: pwsh
         run: |
           # v1.1 -> 1.1.0: MSBuild will drei Stellen sehen.
-          $number = $env:TAG.TrimStart('v')
-          $parts = @($number.Split('.'))
+          $parts = @($env:TAG.TrimStart('v').Split('.'))
           while ($parts.Count -lt 3) { $parts += '0' }
           ./build.ps1 -Version ($parts[0..2] -join '.')
 
@@ -55,10 +68,22 @@ jobs:
         run: |
           $number = $env:TAG.TrimStart('v')
 
-          # Beschreibung eines annotierten Tags wird der Text des Releases;
-          # ohne Annotation bleibt es beim blossen Namen.
-          $notes = (git tag -l --format='%(contents)' $env:TAG | Out-String).Trim()
-          if (-not $notes) { $notes = "Monkey $number" }
+          # Text des Releases: was beim Start mitgegeben wurde, sonst die
+          # Beschreibung des Tags, sonst laesst GitHub die Aenderungen auflisten.
+          $notes = $env:NOTES
+          if (-not $notes) {
+            $notes = (git tag -l --format='%(contents)' $env:TAG | Out-String).Trim()
+          }
 
-          gh release create $env:TAG dist/MonkeySetup.exe `
-            --title "Monkey $number" --notes $notes
+          # Gibt es den Tag noch nicht, legt GitHub ihn auf diesen Stand an.
+          $target = (git rev-parse HEAD).Trim()
+
+          $arguments = @(
+            'release', 'create', $env:TAG, 'dist/MonkeySetup.exe',
+            '--title', "Monkey $number",
+            '--target', $target
+          )
+          if ($notes) { $arguments += @('--notes', $notes) }
+          else        { $arguments += '--generate-notes' }
+
+          gh @arguments

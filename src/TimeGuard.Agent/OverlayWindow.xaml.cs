@@ -156,14 +156,29 @@ public partial class OverlayWindow : Window
 
         if (status.Paused)
         {
-            CaptionLabel.Text = status.PauseUntil is { } until ? $"pausiert bis {until:HH:mm}" : "pausiert";
+            // Auch hier wechselt die Zahl beim Hovern - dann erklaeren, was sie
+            // bedeutet, statt nur die Pausendauer zu zeigen. Bewusst derselbe
+            // kurze Text wie sonst, damit die Breite beim Hovern nicht springt;
+            // dass pausiert ist, zeigt bereits die Farbe.
+            CaptionLabel.Text = _hovering
+                ? (showElapsed ? "schon genutzt" : "bleiben noch")
+                : (status.PauseUntil is { } until ? $"pausiert bis {until:HH:mm}" : "pausiert");
             Colorize(CustomColor ?? PausedColor);
             return;
         }
 
-        CaptionLabel.Text = showElapsed
-            ? (status.Counting ? "angemeldet" : "angemeldet, steht")
-            : (status.Counting ? "verbleibend" : "verbleibend, steht");
+        // Beim Hovern wird der jeweils andere Wert gezeigt - dann sagt die
+        // Beschriftung ausdruecklich, was die Zahl darueber bedeutet.
+        if (_hovering)
+        {
+            CaptionLabel.Text = showElapsed ? "schon genutzt" : "bleiben noch";
+        }
+        else
+        {
+            CaptionLabel.Text = showElapsed
+                ? (status.Counting ? "angemeldet" : "angemeldet, steht")
+                : (status.Counting ? "verbleibend" : "verbleibend, steht");
+        }
 
         if (CustomColor is { } chosen)
         {
@@ -190,16 +205,20 @@ public partial class OverlayWindow : Window
             Panel.BorderThickness = new Thickness(1);
             Panel.Effect = PanelShadow;
             TimeLabel.Effect = null;
+            CaptionLabel.Effect = null;
             CaptionLabel.Visibility = Visibility.Visible;
         }
         else
         {
-            // Nur die Zahl: Kasten weg, Beschriftung weg, Schatten fuer Lesbarkeit.
+            // Nur die Zahl: Kasten weg, Schatten fuer Lesbarkeit. Die Beschriftung
+            // bleibt aus - ausser beim Hovern, wo sie erklaert, was die gerade
+            // gezeigte Zahl bedeutet.
             Panel.Background = Brushes.Transparent;
             Panel.BorderThickness = new Thickness(0);
             Panel.Effect = null;
             TimeLabel.Effect = TextGlow;
-            CaptionLabel.Visibility = Visibility.Collapsed;
+            CaptionLabel.Effect = TextGlow;
+            CaptionLabel.Visibility = _hovering ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 

@@ -49,9 +49,9 @@ internal sealed class GuardEngine
         _lastSave = _clock.Now;
         _activeGrace = TimeSpan.FromSeconds(_state.Config.GraceSeconds);
 
-        Log.Write($"Dienst gestartet. Guthaben {Format(_state.BalanceSeconds)}, " +
-                  $"Tagesbudget {_state.Config.DailyGrantMinutes} min, Deckel {_state.Config.CapMinutes} min, " +
-                  $"Passwort {(_state.HasPassword ? "gesetzt" : "FEHLT")}.");
+        Log.Write($"Service started. Balance {Format(_state.BalanceSeconds)}, " +
+                  $"per day {_state.Config.DailyGrantMinutes} min, cap {_state.Config.CapMinutes} min, " +
+                  $"password {(_state.HasPassword ? "set" : "MISSING")}.");
     }
 
     // ---------------------------------------------------------------- Tick
@@ -113,7 +113,7 @@ internal sealed class GuardEngine
         {
             _state.LastAccrualDate = today;
             Grant();
-            Log.Write($"Erstgutschrift. Guthaben {Format(_state.BalanceSeconds)}.");
+            Log.Write($"First top-up. Balance {Format(_state.BalanceSeconds)}.");
             return;
         }
 
@@ -128,7 +128,7 @@ internal sealed class GuardEngine
         }
 
         _state.LastAccrualDate = today;
-        Log.Write($"Tageswechsel: {days} Tag(e) gutgeschrieben, Guthaben {Format(_state.BalanceSeconds)}.");
+        Log.Write($"New day: {days} day(s) credited, balance {Format(_state.BalanceSeconds)}.");
     }
 
     private void Grant()
@@ -148,7 +148,7 @@ internal sealed class GuardEngine
         if (_clock.Now < until) return true;
 
         _state.PauseUntil = null;
-        Log.Write("Master-Pause abgelaufen, Kontrolle wieder aktiv.");
+        Log.Write("Pause expired, the limit is active again.");
         return false;
     }
 
@@ -203,8 +203,8 @@ internal sealed class GuardEngine
                 ? _state.Config.LoginGraceSeconds
                 : _state.Config.GraceSeconds);
 
-            Log.Write($"Guthaben leer. Abmeldung in {_activeGrace.TotalSeconds:0} s" +
-                      $"{(freshLogin ? " (Anmeldung mit leerem Konto)" : string.Empty)}.");
+            Log.Write($"Balance empty. Signing out in {_activeGrace.TotalSeconds:0} s" +
+                      $"{(freshLogin ? " (signed in with an empty balance)" : string.Empty)}.");
         }
 
         _previousRemainingMinutes = double.MaxValue;
@@ -215,8 +215,8 @@ internal sealed class GuardEngine
             var left = (int)(_activeGrace - elapsed).TotalSeconds;
             foreach (var session in sessions.Where(NoLiveAgent))
                 Native.SendMessage(session, "Monkey",
-                    $"Das Zeitkontingent ist aufgebraucht.\n\nAbmeldung in {left} Sekunden.\n\n" +
-                    "Bitte jetzt alles speichern.", Math.Max(5, left));
+                    $"Your screen time is used up.\n\nSigning out in {left} seconds.\n\n" +
+                    "Please save your work now.", Math.Max(5, left));
             return;
         }
 
@@ -227,13 +227,13 @@ internal sealed class GuardEngine
         {
             if (RunMode.DryRunLogoff)
             {
-                Log.Write($"[Trockenlauf] Sitzung {session} wuerde jetzt abgemeldet.");
+                Log.Write($"[Dry run] Session {session} would be signed out now.");
                 continue;
             }
 
-            Log.Write($"Kontingent aufgebraucht - melde Sitzung {session} ab.");
+            Log.Write($"Balance used up - signing out session {session}.");
             if (!Native.LogoffSession(session))
-                Log.Write($"Abmeldung der Sitzung {session} fehlgeschlagen (Win32 {LastError()}).");
+                Log.Write($"Signing out session {session} failed (Win32 {LastError()}).");
         }
 
         _zeroSince = null;
@@ -255,9 +255,9 @@ internal sealed class GuardEngine
             // Systemdialog als Rueckfallebene.
             foreach (var session in sessions.Where(NoLiveAgent))
                 Native.SendMessage(session, "Monkey",
-                    $"Noch {threshold} Minute(n) Computerzeit.");
+                    $"{threshold} minute(s) of screen time left.");
 
-            Log.Write($"Warnschwelle {threshold} min erreicht.");
+            Log.Write($"Warning threshold {threshold} min reached.");
         }
 
         _previousRemainingMinutes = remaining;
@@ -289,8 +289,8 @@ internal sealed class GuardEngine
                     {
                         _state.PauseUntil = null;
                         _store.Save(_state);
-                        Log.Write("Master-Pause vorzeitig beendet.");
-                        return Response.Success("Kontrolle wieder aktiv.", BuildStatus(request.SessionId));
+                        Log.Write("Pause ended early.");
+                        return Response.Success("The limit is active again.", BuildStatus(request.SessionId));
                     });
 
                 case RequestType.AddTime:
@@ -305,14 +305,14 @@ internal sealed class GuardEngine
                 case RequestType.Unlock:
                     return WithPassword(request.Password, () =>
                     {
-                        Log.Write("Autorisierter Teardown angefordert - Sperren werden entfernt.");
+                        Log.Write("Authorised teardown requested - releasing locks.");
                         SelfProtect.Teardown();
                         return Response.Success(
-                            "Alle Sperren entfernt. Der Dienst lässt sich jetzt stoppen und entfernen.");
+                            "All locks released. The service can now be stopped and removed.");
                     });
 
                 default:
-                    return Response.Fail($"Unbekannte Anfrage '{request.Type}'.");
+                    return Response.Fail($"Unknown request '{request.Type}'.");
             }
         }
     }
@@ -325,8 +325,8 @@ internal sealed class GuardEngine
             _state.PauseUntil = _clock.Now.AddMinutes(minutes);
             _zeroSince = null;
             _store.Save(_state);
-            Log.Write($"Master-Pause fuer {minutes} min bis {_state.PauseUntil:HH:mm}.");
-            return Response.Success($"Kontrolle pausiert bis {_state.PauseUntil:HH:mm} Uhr.",
+            Log.Write($"Paused for {minutes} min until {_state.PauseUntil:HH:mm}.");
+            return Response.Success($"Paused until {_state.PauseUntil:HH:mm}.",
                 BuildStatus(request.SessionId));
         });
     }
@@ -337,30 +337,30 @@ internal sealed class GuardEngine
     /// </summary>
     private Response HandleAddTime(Request request)
     {
-        if (request.Minutes == 0) return Response.Fail("Keine Minutenzahl angegeben.");
+        if (request.Minutes == 0) return Response.Fail("No number of minutes given.");
 
         return WithPassword(request.Password, () =>
         {
             if (request.Minutes > _state.Config.MaxManualGrantMinutes)
                 return Response.Fail(
-                    $"Pro Vorgang lassen sich höchstens {FormatMinutes(_state.Config.MaxManualGrantMinutes)} " +
-                    "nachlegen. Für mehr den Vorgang einfach wiederholen.");
+                    $"At most {FormatMinutes(_state.Config.MaxManualGrantMinutes)} can be added per go. " +
+                    "Need more? Just do it again.");
 
             _state.BalanceSeconds = Math.Max(0, _state.BalanceSeconds + request.Minutes * 60.0);
             _zeroSince = null;
             _previousRemainingMinutes = double.MaxValue;
             _store.Save(_state);
 
-            Log.Write($"Guthaben manuell um {request.Minutes:+#;-#;0} min geaendert, neu {Format(_state.BalanceSeconds)}.");
+            Log.Write($"Balance changed manually by {request.Minutes:+#;-#;0} min, now {Format(_state.BalanceSeconds)}.");
 
-            return Response.Success($"Guthaben jetzt {Format(_state.BalanceSeconds)}.",
+            return Response.Success($"Balance is now {Format(_state.BalanceSeconds)}.",
                 BuildStatus(request.SessionId));
         });
     }
 
     private Response HandleSetConfig(Request request)
     {
-        if (request.Config is not { } incoming) return Response.Fail("Keine Einstellungen übergeben.");
+        if (request.Config is not { } incoming) return Response.Fail("No settings were sent.");
         return WithPassword(request.Password, () =>
         {
             var config = _state.Config;
@@ -377,16 +377,16 @@ internal sealed class GuardEngine
             // Installieren festgelegt und laesst sich hier nicht aendern.
 
             _store.Save(_state);
-            Log.Write($"Einstellungen geaendert: {config.DailyGrantMinutes} min/Tag, Deckel {config.CapMinutes} min, " +
-                      $"Warnung bei {config.WarnMinutes} min.");
-            return Response.Success("Einstellungen gespeichert.", BuildStatus(request.SessionId));
+            Log.Write($"Settings changed: {config.DailyGrantMinutes} min/day, cap {config.CapMinutes} min, " +
+                      $"warning at {config.WarnMinutes} min.");
+            return Response.Success("Settings saved.", BuildStatus(request.SessionId));
         });
     }
 
     private Response HandleChangePassword(Request request)
     {
         if (string.IsNullOrEmpty(request.NewPassword) || request.NewPassword.Length < 4)
-            return Response.Fail("Das neue Passwort muss mindestens 4 Zeichen haben.");
+            return Response.Fail("The new password needs at least 4 characters.");
 
         return WithPassword(request.Password, () =>
         {
@@ -395,8 +395,8 @@ internal sealed class GuardEngine
             _state.PasswordSalt = salt;
             _state.PasswordIterations = iterations;
             _store.Save(_state);
-            Log.Write("Master-Passwort geaendert.");
-            return Response.Success("Master-Passwort geändert.", BuildStatus(request.SessionId));
+            Log.Write("Master password changed.");
+            return Response.Success("Master password changed.", BuildStatus(request.SessionId));
         });
     }
 
@@ -407,29 +407,28 @@ internal sealed class GuardEngine
     private Response WithPassword(string? password, Func<Response> action)
     {
         if (!_state.HasPassword)
-            return Response.Fail("Es ist kein Master-Passwort hinterlegt. " +
-                                 "Neu setzen mit 'MonkeyService.exe init' als Administrator.");
+            return Response.Fail("No master password is stored. Please reinstall with MonkeySetup.exe.");
 
         if (_clock.Now < _lockoutUntil)
         {
             var seconds = (int)(_lockoutUntil - _clock.Now).TotalSeconds;
-            return Response.Fail($"Zu viele Fehlversuche. Noch {seconds} Sekunden gesperrt.");
+            return Response.Fail($"Too many wrong tries. Locked for another {seconds} seconds.");
         }
 
         if (string.IsNullOrEmpty(password) ||
             !PasswordHash.Verify(password, _state.PasswordHash, _state.PasswordSalt, _state.PasswordIterations))
         {
             _failedAttempts++;
-            Log.Write($"Falsches Master-Passwort (Versuch {_failedAttempts}).");
+            Log.Write($"Wrong master password (attempt {_failedAttempts}).");
 
             if (_failedAttempts >= MaxFailedAttempts)
             {
                 _lockoutUntil = _clock.Now + LockoutDuration;
                 _failedAttempts = 0;
-                return Response.Fail($"Zu viele Fehlversuche. {LockoutDuration.TotalSeconds:0} Sekunden gesperrt.");
+                return Response.Fail($"Too many wrong tries. Locked for {LockoutDuration.TotalSeconds:0} seconds.");
             }
 
-            return Response.Fail("Falsches Master-Passwort.");
+            return Response.Fail("Wrong master password.");
         }
 
         _failedAttempts = 0;
@@ -473,7 +472,7 @@ internal sealed class GuardEngine
         {
             _state.TrustedNow = _clock.Now;
             _store.Save(_state);
-            Log.Write($"Dienst beendet. Guthaben {Format(_state.BalanceSeconds)}.");
+            Log.Write($"Service stopped. Balance {Format(_state.BalanceSeconds)}.");
         }
     }
 

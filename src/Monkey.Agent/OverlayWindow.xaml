@@ -10,8 +10,10 @@
         ResizeMode="NoResize"
         SizeToContent="WidthAndHeight"
         Focusable="False"
-        IsHitTestVisible="False"
-        UseLayoutRounding="True">
+        UseLayoutRounding="True"
+        Cursor="Hand"
+        MouseLeftButtonUp="OnClick"
+        ToolTip="Click to open the control panel">
 
     <Border x:Name="Panel"
             CornerRadius="12"
@@ -31,7 +33,7 @@
                        Foreground="#F2FFFFFF"
                        HorizontalAlignment="Center"/>
             <TextBlock x:Name="CaptionLabel"
-                       Text="verbleibend"
+                       Text="left"
                        FontFamily="Segoe UI"
                        FontSize="10.5"
                        Foreground="#99FFFFFF"

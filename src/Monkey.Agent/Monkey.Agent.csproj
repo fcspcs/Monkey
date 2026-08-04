@@ -24,6 +24,12 @@
     </EmbeddedResource>
   </ItemGroup>
 
+  <!-- Bilder fuer die Oberflaeche (Warnfenster, Master-Fenster). -->
+  <ItemGroup>
+    <Resource Include="..\..\assets\monkey.png" Link="Assets\monkey.png" />
+    <Resource Include="..\..\assets\monkey-fries.png" Link="Assets\monkey-fries.png" />
+  </ItemGroup>
+
   <!--
     UseWindowsForms zieht System.Drawing und System.Windows.Forms als globale
     Usings herein und macht damit Color, Brush und Application mehrdeutig.

@@ -1,7 +1,7 @@
 #
-# Baut den Installer nach .\dist. Ergebnis ist eine einzige Datei:
-# MonkeySetup.exe - sie enthaelt Dienst und Agent als Nutzlast.
-# Braucht keine erhoehten Rechte.
+# Builds the installer into .\dist. The result is a single file:
+# MonkeySetup.exe - it carries the service and the display inside.
+# No elevated rights needed.
 #
 [CmdletBinding()]
 param(
@@ -18,7 +18,7 @@ if (Test-Path (Join-Path $localDotnet "dotnet.exe")) {
 }
 
 if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
-    throw "dotnet wurde nicht gefunden. SDK holen von https://dot.net"
+    throw "dotnet not found. Get the SDK from https://dot.net"
 }
 
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = 1
@@ -38,11 +38,11 @@ Reset-Dir $payload
 
 # 1. Dienst und Agent als je eine Einzeldatei-Exe erzeugen.
 foreach ($app in @("Monkey.Service", "Monkey.Agent")) {
-    Write-Host "Baue $app (Einzeldatei) ..." -ForegroundColor Cyan
+    Write-Host "Building $app (single file) ..." -ForegroundColor Cyan
     $csproj = Join-Path $PSScriptRoot "src\$app\$app.csproj"
     $out = Join-Path $staging $app
     dotnet publish $csproj -c $Configuration -o $out --nologo
-    if ($LASTEXITCODE -ne 0) { throw "Build von $app fehlgeschlagen." }
+    if ($LASTEXITCODE -ne 0) { throw "Build of $app failed." }
 }
 
 # 2. Die beiden Exe-Dateien als Nutzlast fuer den Installer bereitstellen.
@@ -50,10 +50,10 @@ Copy-Item (Join-Path $staging "Monkey.Service\MonkeyService.exe") $payload -Forc
 Copy-Item (Join-Path $staging "Monkey.Agent\MonkeyAgent.exe") $payload -Force
 
 # 3. Den Installer bauen - er bettet die Nutzlast ein.
-Write-Host "Baue Monkey.Setup (Einzeldatei mit eingebetteter Nutzlast) ..." -ForegroundColor Cyan
+Write-Host "Building Monkey.Setup (single file with embedded payload) ..." -ForegroundColor Cyan
 $setup = Join-Path $PSScriptRoot "src\Monkey.Setup\Monkey.Setup.csproj"
 dotnet publish $setup -c $Configuration -o $Output --nologo
-if ($LASTEXITCODE -ne 0) { throw "Build von Monkey.Setup fehlgeschlagen." }
+if ($LASTEXITCODE -ne 0) { throw "Build of Monkey.Setup failed." }
 
 # 4. Aufraeumen: Nutzlast und Staging werden nicht mehr gebraucht.
 Reset-Dir $payload; Remove-Item $payload -Force -ErrorAction SilentlyContinue
@@ -65,7 +65,7 @@ Get-ChildItem $Output -File | Where-Object { $_.Name -ne "MonkeySetup.exe" } |
     Remove-Item -Force -ErrorAction SilentlyContinue
 
 Write-Host ""
-Write-Host "Fertig. Eine Datei:" -ForegroundColor Green
+Write-Host "Done. One file:" -ForegroundColor Green
 Get-ChildItem $Output -File | Select-Object Name, @{n = "MB"; e = { [math]::Round($_.Length / 1MB, 1) } }
 Write-Host ""
-Write-Host "Starten: dist\MonkeySetup.exe doppelklicken und die Windows-Abfrage bestaetigen." -ForegroundColor Yellow
+Write-Host "Run it: double-click dist\MonkeySetup.exe and accept the Windows prompt." -ForegroundColor Yellow

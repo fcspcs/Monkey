@@ -28,17 +28,17 @@ internal sealed class StateStore
                     if (state is not null)
                     {
                         if (candidate == Paths.StateBackup)
-                            Log.Write("Hauptdatei unlesbar, Zustand aus Sicherung wiederhergestellt.");
+                            Log.Write("Main file unreadable, state restored from the backup.");
                         return state;
                     }
                 }
                 catch (Exception ex)
                 {
-                    Log.Write($"Zustand aus '{candidate}' nicht lesbar: {ex.Message}");
+                    Log.Write($"State in '{candidate}' not readable: {ex.Message}");
                 }
             }
 
-            Log.Write("Kein Zustand gefunden, lege Standardzustand an.");
+            Log.Write("No state found, creating defaults.");
             return new GuardState { TrustedNow = DateTimeOffset.Now };
         }
     }
@@ -62,7 +62,7 @@ internal sealed class StateStore
             }
             catch (Exception ex)
             {
-                Log.Write($"Zustand konnte nicht gespeichert werden: {ex.Message}");
+                Log.Write($"State could not be saved: {ex.Message}");
             }
         }
     }
@@ -111,7 +111,7 @@ internal sealed class StateStore
         }
         catch (Exception ex)
         {
-            Log.Write($"Berechtigungen des Datenordners nicht setzbar: {ex.Message}");
+            Log.Write($"Could not set permissions on the data folder: {ex.Message}");
         }
     }
 
@@ -141,7 +141,7 @@ internal sealed class StateStore
         }
         catch (Exception ex)
         {
-            Log.Write($"Berechtigungen des Datenordners nicht zuruecksetzbar: {ex.Message}");
+            Log.Write($"Could not reset permissions on the data folder: {ex.Message}");
         }
     }
 }

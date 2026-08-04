@@ -56,7 +56,7 @@ internal static class SelfProtect
     {
         if (TeardownRequested)
         {
-            Log.Write("Teardown-Marker vorhanden - Selbstschutz wird nicht angewendet.");
+            Log.Write("Teardown marker present - self-protection not applied.");
             return;
         }
 
@@ -83,7 +83,7 @@ internal static class SelfProtect
 
         if (!ServiceExists())
         {
-            Log.Write("Watchdog: Dienst fehlt - wird neu angelegt.");
+            Log.Write("Watchdog: service missing - recreating it.");
             CreateService();
         }
 
@@ -105,7 +105,7 @@ internal static class SelfProtect
         }
         catch (Exception ex)
         {
-            Log.Write($"Teardown-Marker nicht schreibbar: {ex.Message}");
+            Log.Write($"Teardown marker not writable: {ex.Message}");
         }
 
         RemoveWatchdogTask();
@@ -115,14 +115,14 @@ internal static class SelfProtect
         UnhardenProgramDir();
         SetServiceSddl(OpenSddl);
         StateStore.Unharden();
-        Log.Write("Teardown vorbereitet: Sperren entfernt, Dienst kann gestoppt werden.");
+        Log.Write("Teardown prepared: locks released, the service can be stopped.");
     }
 
     // ------------------------------------------------------------- Dienst
 
     private static string ServiceExePath =>
         Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName
-        ?? throw new InvalidOperationException("Eigener Pfad nicht ermittelbar.");
+        ?? throw new InvalidOperationException("Could not determine own path.");
 
     private static bool ServiceExists()
     {
@@ -133,8 +133,8 @@ internal static class SelfProtect
     private static void CreateService()
     {
         Sc($"create {ServiceName} binPath= \"{ServiceExePath}\" start= auto obj= LocalSystem " +
-           $"DisplayName= \"Monkey Zeitkontrolle\"");
-        Sc($"description {ServiceName} \"Begrenzt die taegliche Computerzeit mit Uebertrag ungenutzter Zeit.\"");
+           $"DisplayName= \"Monkey screen time\"");
+        Sc($"description {ServiceName} \"Limits daily computer time, unused time rolls over.\"");
         Sc($"failure {ServiceName} reset= 0 actions= restart/2000/restart/2000/restart/2000");
     }
 
@@ -183,7 +183,7 @@ internal static class SelfProtect
         }
         catch (Exception ex)
         {
-            Log.Write($"Registry des Dienstes nicht absicherbar: {ex.Message}");
+            Log.Write($"Could not protect the service registry key: {ex.Message}");
         }
     }
 
@@ -204,7 +204,7 @@ internal static class SelfProtect
         }
         catch (Exception ex)
         {
-            Log.Write($"Registry des Dienstes nicht zuruecksetzbar: {ex.Message}");
+            Log.Write($"Could not reset the service registry key: {ex.Message}");
         }
     }
 
@@ -248,7 +248,7 @@ internal static class SelfProtect
         }
         catch (Exception ex)
         {
-            Log.Write($"Programmordner nicht absicherbar: {ex.Message}");
+            Log.Write($"Could not protect the program folder: {ex.Message}");
         }
     }
 
@@ -268,7 +268,7 @@ internal static class SelfProtect
         }
         catch (Exception ex)
         {
-            Log.Write($"Programmordner nicht freigebbar: {ex.Message}");
+            Log.Write($"Could not release the program folder: {ex.Message}");
         }
     }
 
@@ -285,7 +285,7 @@ internal static class SelfProtect
             }
             catch (Exception ex)
             {
-                Log.Write($"SafeBoot-Eintrag '{path}' nicht setzbar: {ex.Message}");
+                Log.Write($"Could not set safe-mode entry '{path}': {ex.Message}");
             }
         }
     }
@@ -295,7 +295,7 @@ internal static class SelfProtect
         foreach (var path in SafeBootKeys)
         {
             try { Registry.LocalMachine.DeleteSubKeyTree(path, throwOnMissingSubKey: false); }
-            catch (Exception ex) { Log.Write($"SafeBoot-Eintrag '{path}' nicht entfernbar: {ex.Message}"); }
+            catch (Exception ex) { Log.Write($"Could not remove safe-mode entry '{path}': {ex.Message}"); }
         }
     }
 
@@ -313,7 +313,7 @@ internal static class SelfProtect
         }
         catch (Exception ex)
         {
-            Log.Write($"Agent-Autostart nicht setzbar: {ex.Message}");
+            Log.Write($"Could not set the display autostart: {ex.Message}");
         }
     }
 
@@ -326,7 +326,7 @@ internal static class SelfProtect
         }
         catch (Exception ex)
         {
-            Log.Write($"Agent-Autostart nicht entfernbar: {ex.Message}");
+            Log.Write($"Could not remove the display autostart: {ex.Message}");
         }
     }
 
@@ -368,7 +368,7 @@ internal static class SelfProtect
         }
         catch (Exception ex)
         {
-            Log.Write($"'{file} {arguments}' fehlgeschlagen: {ex.Message}");
+            Log.Write($"'{file} {arguments}' failed: {ex.Message}");
         }
     }
 }

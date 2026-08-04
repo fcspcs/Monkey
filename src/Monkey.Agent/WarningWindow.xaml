@@ -24,20 +24,28 @@
         </Border.Effect>
 
         <StackPanel MinWidth="300">
+            <!-- Der Affe gross ueber der Meldung. IsHitTestVisible=False, damit
+                 auch ein Klick auf das Bild das Fenster schliesst. -->
+            <Image Source="Assets/monkey.png"
+                   Width="96" Height="96"
+                   Margin="0,0,0,10"
+                   HorizontalAlignment="Center"
+                   IsHitTestVisible="False"
+                   RenderOptions.BitmapScalingMode="HighQuality"/>
             <TextBlock x:Name="Headline"
-                       Text="Noch 10 Minuten"
+                       Text="10 minutes left"
                        FontFamily="Segoe UI Semibold"
                        FontSize="30"
                        Foreground="#FFFFC14E"
                        HorizontalAlignment="Center"/>
             <TextBlock x:Name="Subline"
-                       Text="Computerzeit"
+                       Text="of screen time"
                        FontFamily="Segoe UI"
                        FontSize="14"
                        Foreground="#CCFFFFFF"
                        HorizontalAlignment="Center"
                        Margin="0,4,0,0"/>
-            <TextBlock Text="Klicken zum Schließen"
+            <TextBlock Text="click to dismiss"
                        FontFamily="Segoe UI"
                        FontSize="10.5"
                        Foreground="#77FFFFFF"

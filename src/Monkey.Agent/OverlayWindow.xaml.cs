@@ -21,7 +21,8 @@ namespace Monkey.Agent;
 public partial class OverlayWindow : Window
 {
     private const double EdgeMargin = 16;
-    private static readonly TimeSpan HoverPollInterval = TimeSpan.FromMilliseconds(200);
+    // Bestimmt auch, wie schnell das Overlay nach dem Hinfahren Klicks annimmt.
+    private static readonly TimeSpan HoverPollInterval = TimeSpan.FromMilliseconds(100);
 
     private static readonly Color Normal = Color.FromRgb(0xF2, 0xF4, 0xF8);
     private static readonly Color Warning = Color.FromRgb(0xFF, 0xC1, 0x4E);
@@ -64,6 +65,9 @@ public partial class OverlayWindow : Window
         _hoverTimer.Start();
     }
 
+    /// <summary>Wird ausgeloest, wenn auf das Overlay geklickt wird.</summary>
+    public event EventHandler? Clicked;
+
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
@@ -74,6 +78,9 @@ public partial class OverlayWindow : Window
 
         Reposition();
     }
+
+    private void OnClick(object sender, System.Windows.Input.MouseButtonEventArgs e) =>
+        Clicked?.Invoke(this, EventArgs.Empty);
 
     private void Reposition()
     {
@@ -98,7 +105,18 @@ public partial class OverlayWindow : Window
 
     private void CheckHover()
     {
-        if (!IsVisible || _handle == IntPtr.Zero) return;
+        if (!IsVisible || _handle == IntPtr.Zero)
+        {
+            // Ausgeblendet: Zustand zuruecksetzen, damit das Fenster nicht
+            // klickfangend bleibt, wenn der Zeiger beim Ausblenden darueber stand.
+            if (_hovering)
+            {
+                _hovering = false;
+                NativeMethods.SetClickThrough(_handle, clickThrough: true);
+            }
+            return;
+        }
+
         if (!NativeMethods.GetCursorPos(out var cursor)) return;
 
         bool inside;
@@ -115,6 +133,12 @@ public partial class OverlayWindow : Window
         if (inside == _hovering) return;
 
         _hovering = inside;
+
+        // Klickdurchlaessig bleiben, solange der Zeiger woanders ist - sonst waere
+        // die Ecke des Bildschirms blockiert. Nur unter dem Zeiger nimmt das
+        // Overlay Klicks an, damit es sich anklicken laesst.
+        NativeMethods.SetClickThrough(_handle, clickThrough: !inside);
+
         Paint();
     }
 
@@ -133,7 +157,7 @@ public partial class OverlayWindow : Window
         if (status is null)
         {
             TimeLabel.Text = "--:--";
-            CaptionLabel.Text = "Dienst nicht erreichbar";
+            CaptionLabel.Text = "service unreachable";
             Colorize(CustomColor ?? Offline);
             return;
         }
@@ -143,7 +167,7 @@ public partial class OverlayWindow : Window
         if (status.SecondsUntilLogoff is { } grace)
         {
             TimeLabel.Text = $"{Math.Ceiling(grace):0} s";
-            CaptionLabel.Text = "Abmeldung - jetzt speichern";
+            CaptionLabel.Text = "signing out - save now";
             Colorize(Critical);
             return;
         }
@@ -161,8 +185,8 @@ public partial class OverlayWindow : Window
             // kurze Text wie sonst, damit die Breite beim Hovern nicht springt;
             // dass pausiert ist, zeigt bereits die Farbe.
             CaptionLabel.Text = _hovering
-                ? (showElapsed ? "schon genutzt" : "bleiben noch")
-                : (status.PauseUntil is { } until ? $"pausiert bis {until:HH:mm}" : "pausiert");
+                ? (showElapsed ? "used so far" : "still left")
+                : (status.PauseUntil is { } until ? $"paused until {until:HH:mm}" : "paused");
             Colorize(CustomColor ?? PausedColor);
             return;
         }
@@ -171,13 +195,13 @@ public partial class OverlayWindow : Window
         // Beschriftung ausdruecklich, was die Zahl darueber bedeutet.
         if (_hovering)
         {
-            CaptionLabel.Text = showElapsed ? "schon genutzt" : "bleiben noch";
+            CaptionLabel.Text = showElapsed ? "used so far" : "still left";
         }
         else
         {
             CaptionLabel.Text = showElapsed
-                ? (status.Counting ? "angemeldet" : "angemeldet, steht")
-                : (status.Counting ? "verbleibend" : "verbleibend, steht");
+                ? (status.Counting ? "signed in" : "signed in, paused")
+                : (status.Counting ? "left" : "left, paused");
         }
 
         if (CustomColor is { } chosen)

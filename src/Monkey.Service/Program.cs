@@ -39,7 +39,7 @@ try
 }
 catch (Exception ex)
 {
-    Log.Write($"Dienst abgestuerzt: {ex}");
+    Log.Write($"Service crashed: {ex}");
     throw;
 }
 

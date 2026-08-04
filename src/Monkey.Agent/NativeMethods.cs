@@ -20,6 +20,19 @@ internal static class NativeMethods
     public static void AddExtendedStyle(IntPtr handle, int styles) =>
         SetWindowLong(handle, GWL_EXSTYLE, GetWindowLong(handle, GWL_EXSTYLE) | styles);
 
+    /// <summary>
+    /// Schaltet WS_EX_TRANSPARENT um. Eingeschaltet fallen Mausklicks durch das
+    /// Fenster hindurch; ausgeschaltet nimmt es sie an.
+    /// </summary>
+    public static void SetClickThrough(IntPtr handle, bool clickThrough)
+    {
+        if (handle == IntPtr.Zero) return;
+
+        var style = GetWindowLong(handle, GWL_EXSTYLE);
+        var updated = clickThrough ? style | WS_EX_TRANSPARENT : style & ~WS_EX_TRANSPARENT;
+        if (updated != style) SetWindowLong(handle, GWL_EXSTYLE, updated);
+    }
+
     // --- Immer oben halten, ohne zu aktivieren ---
 
     private static readonly IntPtr HWND_TOPMOST = new(-1);

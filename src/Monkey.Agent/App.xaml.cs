@@ -33,15 +33,15 @@ public partial class App : Application
 
     private static readonly (string Label, string Value)[] OverlayColors =
     [
-        ("Automatisch (nach Restzeit)", "auto"),
-        ("Weiß", "#F2F4F8"),
-        ("Grün", "#5BD68A"),
-        ("Blau", "#7AC7FF"),
-        ("Gelb", "#FFC14E"),
+        ("Automatic (by time left)", "auto"),
+        ("White", "#F2F4F8"),
+        ("Green", "#5BD68A"),
+        ("Blue", "#7AC7FF"),
+        ("Yellow", "#FFC14E"),
         ("Orange", "#FF9F40"),
-        ("Rot", "#FF6B5E"),
+        ("Red", "#FF6B5E"),
         ("Pink", "#FF7AC7"),
-        ("Violett", "#B57AFF"),
+        ("Purple", "#B57AFF"),
     ];
     private readonly Dictionary<string, Drawing::Icon> _icons = new();
 
@@ -67,6 +67,7 @@ public partial class App : Application
 
         _overlay = new OverlayWindow { CountUp = AgentSettings.CountUp };
         _overlay.ApplyPreferences(_overlayBackground, OverlayWindow.ParseColor(_overlayColor));
+        _overlay.Clicked += (_, _) => OpenMaster();
         _overlay.Show();
         if (!_overlayVisible) _overlay.Hide();
 
@@ -130,23 +131,23 @@ public partial class App : Application
     {
         var menu = new Forms::ContextMenuStrip();
 
-        var header = new Forms::ToolStripMenuItem("Restzeit: --") { Enabled = false };
+        var header = new Forms::ToolStripMenuItem("Time left: --") { Enabled = false };
         menu.Items.Add(header);
         menu.Items.Add(new Forms::ToolStripSeparator());
 
-        var toggleOverlay = new Forms::ToolStripMenuItem("Overlay ausblenden");
+        var toggleOverlay = new Forms::ToolStripMenuItem("Hide overlay");
         toggleOverlay.Click += (_, _) => ToggleOverlay();
         menu.Items.Add(toggleOverlay);
 
-        var toggleMode = new Forms::ToolStripMenuItem("Angemeldete Zeit hochzählen");
+        var toggleMode = new Forms::ToolStripMenuItem("Count time used instead");
         toggleMode.Click += (_, _) => ToggleCountMode();
         menu.Items.Add(toggleMode);
 
-        var toggleBackground = new Forms::ToolStripMenuItem("Hintergrund ausblenden");
+        var toggleBackground = new Forms::ToolStripMenuItem("Hide background");
         toggleBackground.Click += (_, _) => ToggleBackground();
         menu.Items.Add(toggleBackground);
 
-        var colorMenu = new Forms::ToolStripMenuItem("Farbe der Zahl");
+        var colorMenu = new Forms::ToolStripMenuItem("Number colour");
         foreach (var (label, value) in OverlayColors)
         {
             var item = new Forms::ToolStripMenuItem(label) { Tag = value };
@@ -157,28 +158,28 @@ public partial class App : Application
 
         menu.Items.Add(new Forms::ToolStripSeparator());
 
-        var master = new Forms::ToolStripMenuItem("Master-Steuerung ...");
+        var master = new Forms::ToolStripMenuItem("Control panel ...");
         master.Click += (_, _) => OpenMaster();
         menu.Items.Add(master);
 
         menu.Items.Add(new Forms::ToolStripSeparator());
 
-        var quit = new Forms::ToolStripMenuItem("Anzeige beenden");
+        var quit = new Forms::ToolStripMenuItem("Quit display");
         quit.Click += (_, _) => QuitAgent();
         menu.Items.Add(quit);
 
         menu.Opening += (_, _) =>
         {
             header.Text = _status is null
-                ? "Dienst nicht erreichbar"
-                : $"Restzeit: {FormatMinutes(_status.BalanceSeconds)}"
-                  + (_status.Paused ? "  (pausiert)" : string.Empty);
+                ? "Service unreachable"
+                : $"Time left: {FormatMinutes(_status.BalanceSeconds)}"
+                  + (_status.Paused ? "  (paused)" : string.Empty);
 
-            toggleOverlay.Text = _overlayVisible ? "Overlay ausblenden" : "Overlay einblenden";
+            toggleOverlay.Text = _overlayVisible ? "Hide overlay" : "Show overlay";
             toggleMode.Text = _overlay?.CountUp == true
-                ? "Verbleibende Zeit herunterzählen"
-                : "Angemeldete Zeit hochzählen";
-            toggleBackground.Text = _overlayBackground ? "Hintergrund ausblenden" : "Hintergrund einblenden";
+                ? "Count time left instead"
+                : "Count time used instead";
+            toggleBackground.Text = _overlayBackground ? "Hide background" : "Show background";
 
             foreach (Forms::ToolStripMenuItem item in colorMenu.DropDownItems)
                 item.Checked = string.Equals(item.Tag as string, _overlayColor, StringComparison.OrdinalIgnoreCase);
@@ -204,19 +205,19 @@ public partial class App : Application
         if (_status is null)
         {
             key = "offline";
-            tip = "Monkey - Dienst nicht erreichbar";
+            tip = "Monkey - service unreachable";
         }
         else if (_status.Paused)
         {
             key = "paused";
-            tip = $"Monkey - pausiert, {FormatMinutes(_status.BalanceSeconds)} Guthaben";
+            tip = $"Monkey - paused, {FormatMinutes(_status.BalanceSeconds)} banked";
         }
         else
         {
             var minutes = _status.BalanceSeconds / 60.0;
             key = minutes switch { <= 5 => "critical", <= 15 => "warning", _ => "normal" };
-            tip = $"Monkey - {FormatMinutes(_status.BalanceSeconds)} verbleibend, "
-                  + $"{FormatMinutes(_status.SessionElapsedSeconds)} angemeldet";
+            tip = $"Monkey - {FormatMinutes(_status.BalanceSeconds)} left, "
+                  + $"{FormatMinutes(_status.SessionElapsedSeconds)} used";
         }
 
         _tray.Icon = IconFor(key);
@@ -371,8 +372,8 @@ public partial class App : Application
     private void QuitAgent()
     {
         var answer = MessageBox.Show(
-            "Nur die Anzeige wird beendet. Die Zeitkontrolle läuft im Dienst weiter und meldet " +
-            "dich weiterhin ab, wenn das Kontingent aufgebraucht ist.\n\nAnzeige wirklich beenden?",
+            "This only closes the display. The time limit keeps running in the service and " +
+            "will still sign you out when the balance runs out.\n\nQuit the display?",
             "Monkey", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
 
         if (answer == MessageBoxResult.Yes) Shutdown();

@@ -41,7 +41,7 @@ public partial class MasterWindow : Window
             _passwordTimer.Stop();
             if (MasterPassword.Password.Length == 0) return;
             ClearMasterPassword();
-            Show(false, "Das Master-Passwort wurde aus Sicherheitsgründen geleert. Bitte neu eingeben.");
+            Show(false, "The master password was cleared for safety. Please type it again.");
         };
 
         MasterPassword.PasswordChanged += (_, _) =>
@@ -51,7 +51,21 @@ public partial class MasterWindow : Window
         };
 
         Closed += (_, _) => _passwordTimer.Stop();
-        Loaded += async (_, _) => await RefreshAsync();
+        SizeChanged += (_, _) => UpdateGimmick();
+        Loaded += async (_, _) => { UpdateGimmick(); await RefreshAsync(); };
+    }
+
+    /// <summary>
+    /// Die Zierde links verschwindet, sobald das Fenster schmal wird - die
+    /// Bedienelemente haben dann Vorrang.
+    /// </summary>
+    private void UpdateGimmick()
+    {
+        const double needed = 560;
+        var show = ActualWidth >= needed;
+
+        Gimmick.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        GimmickColumn.Width = show ? GridLength.Auto : new GridLength(0);
     }
 
     /// <summary>
@@ -81,29 +95,29 @@ public partial class MasterWindow : Window
 
         if (status is null)
         {
-            BalanceText.Text = "Guthaben: unbekannt";
-            StateText.Text = "Der Dienst antwortet nicht. Läuft MonkeySrv?";
+            BalanceText.Text = "Balance: unknown";
+            StateText.Text = "The service is not responding. Is MonkeySrv running?";
             return;
         }
 
-        BalanceText.Text = $"Guthaben: {FormatSpan(status.BalanceSeconds)}";
+        BalanceText.Text = $"Balance: {FormatSpan(status.BalanceSeconds)}";
 
         StateText.Text = status switch
         {
-            { Paused: true, PauseUntil: { } until } => $"Kontrolle pausiert bis {until:HH:mm} Uhr.",
-            { Paused: true } => "Kontrolle pausiert.",
-            { Counting: true } => $"Die Uhr läuft. {FormatSpan(status.SessionElapsedSeconds)} seit der Anmeldung.",
-            _ => "Die Uhr steht gerade.",
+            { Paused: true, PauseUntil: { } until } => $"Paused until {until:HH:mm}.",
+            { Paused: true } => "Paused.",
+            { Counting: true } => $"The clock is running. {FormatSpan(status.SessionElapsedSeconds)} since sign-in.",
+            _ => "The clock is paused right now.",
         };
 
         if (status.ClockTamperEvents > 0)
-            StateText.Text += $"  ({status.ClockTamperEvents} Zeitsprung/-sprünge erkannt)";
+            StateText.Text += $"  ({status.ClockTamperEvents} clock jump(s) detected)";
 
         if (status.Config is { } config)
         {
             GrantBudgetText.Text =
-                $"Nachlegen: pro Vorgang höchstens {FormatMinutes(config.MaxManualGrantMinutes)} " +
-                "(beim Installieren festgelegt). Abziehen ist unbegrenzt.";
+                $"Top-ups: at most {FormatMinutes(config.MaxManualGrantMinutes)} per go " +
+                "(fixed at install time). Taking time away is unlimited.";
 
             DailyMinutes.Text = Text(config.DailyGrantMinutes);
             CapMinutes.Text = Text(config.CapMinutes);
@@ -115,15 +129,14 @@ public partial class MasterWindow : Window
         }
 
         if (!status.PasswordConfigured)
-            Show(false, "Es ist kein Master-Passwort hinterlegt. Bitte 'MonkeyService.exe init' " +
-                        "als Administrator ausführen.");
+            Show(false, "No master password is stored. Please reinstall with MonkeySetup.exe.");
     }
 
     private async void OnPause(object sender, RoutedEventArgs e)
     {
         if (!TryReadInt(PauseMinutes.Text, out var minutes) || minutes <= 0)
         {
-            Show(false, "Bitte eine Dauer in ganzen Minuten angeben.");
+            Show(false, "Please give the duration in whole minutes.");
             return;
         }
 
@@ -158,19 +171,19 @@ public partial class MasterWindow : Window
             !TryReadInt(GraceSeconds.Text, out var grace) ||
             !TryReadInt(LoginGraceSeconds.Text, out var loginGrace))
         {
-            Show(false, "Bitte in allen Zahlenfeldern ganze Zahlen eintragen.");
+            Show(false, "Please enter whole numbers in all number fields.");
             return;
         }
 
         if (cap < daily)
         {
-            Show(false, "Das Höchstguthaben darf nicht kleiner sein als das Tagesbudget.");
+            Show(false, "The balance cap can't be smaller than the daily allowance.");
             return;
         }
 
         if (warn <= 0)
         {
-            Show(false, "Die Warnung braucht eine Restminutenzahl größer als 0.");
+            Show(false, "The warning needs a number of minutes greater than 0.");
             return;
         }
 
@@ -200,7 +213,7 @@ public partial class MasterWindow : Window
     {
         if (string.IsNullOrEmpty(MasterPassword.Password))
         {
-            Show(false, "Bitte zuerst oben das Master-Passwort eingeben.");
+            Show(false, "Enter the master password above first.");
             return;
         }
 
@@ -213,13 +226,13 @@ public partial class MasterWindow : Window
     {
         if (NewPassword.Password != NewPasswordRepeat.Password)
         {
-            Show(false, "Die beiden neuen Passwörter stimmen nicht überein.");
+            Show(false, "The two new passwords don't match.");
             return;
         }
 
         if (NewPassword.Password.Length < 4)
         {
-            Show(false, "Das neue Passwort muss mindestens 4 Zeichen haben.");
+            Show(false, "The new password needs at least 4 characters.");
             return;
         }
 
@@ -243,11 +256,11 @@ public partial class MasterWindow : Window
 
         if (response is null)
         {
-            Show(false, "Der Dienst antwortet nicht. Läuft MonkeySrv?");
+            Show(false, "The service is not responding. Is MonkeySrv running?");
             return false;
         }
 
-        Show(response.Ok, response.Message ?? (response.Ok ? "Erledigt." : "Abgelehnt."));
+        Show(response.Ok, response.Message ?? (response.Ok ? "Done." : "Rejected."));
 
         // Nach jeder Aktion - auch nach einer abgelehnten - verschwindet das
         // Passwort wieder aus dem Fenster.

@@ -31,7 +31,7 @@ internal static class Cli
 
         if (!IsElevated())
         {
-            Console.Error.WriteLine("Dieser Befehl braucht eine Eingabeaufforderung als Administrator.");
+            Console.Error.WriteLine("This command needs an administrator command prompt.");
             return 2;
         }
 
@@ -45,7 +45,7 @@ internal static class Cli
 
     private static int Unknown(string command)
     {
-        Console.Error.WriteLine($"Unbekannter Befehl '{command}'.");
+        Console.Error.WriteLine($"Unknown command '{command}'.");
         PrintUsage();
         return 2;
     }
@@ -61,8 +61,8 @@ internal static class Cli
         if (state.HasPassword)
         {
             Console.Error.WriteLine(
-                "Es ist bereits ein Master-Passwort gesetzt. Aendern nur ueber die Master-Steuerung " +
-                "(dort wird das aktuelle Passwort verlangt).");
+                "A master password is already set. Change it in the control panel " +
+                "(it asks for the current one).");
             return 2;
         }
 
@@ -72,7 +72,7 @@ internal static class Cli
 
         if (string.IsNullOrWhiteSpace(password) || password.Length < 4)
         {
-            Console.Error.WriteLine("Ein Master-Passwort mit mindestens 4 Zeichen ist erforderlich.");
+            Console.Error.WriteLine("A master password with at least 4 characters is required.");
             return 2;
         }
 
@@ -99,9 +99,9 @@ internal static class Cli
         state.TrustedNow = DateTimeOffset.Now;
         store.Save(state);
 
-        Console.WriteLine($"Eingerichtet. Tagesbudget {state.Config.DailyGrantMinutes} min, " +
-                          $"Deckel {state.Config.CapMinutes} min, " +
-                          $"Guthaben {state.BalanceSeconds / 60:0} min.");
+        Console.WriteLine($"Set up. Daily allowance {state.Config.DailyGrantMinutes} min, " +
+                          $"cap {state.Config.CapMinutes} min, " +
+                          $"balance {state.BalanceSeconds / 60:0} min.");
         return 0;
     }
 
@@ -109,44 +109,44 @@ internal static class Cli
     {
         if (!File.Exists(Paths.StateFile))
         {
-            Console.Error.WriteLine("Es ist kein Zustand hinterlegt.");
+            Console.Error.WriteLine("No state is stored.");
             return 1;
         }
 
         var state = GuardState.FromJson(File.ReadAllText(Paths.StateFile));
         if (state is null)
         {
-            Console.Error.WriteLine("Zustandsdatei ist beschaedigt.");
+            Console.Error.WriteLine("The state file is damaged.");
             return 1;
         }
 
         var span = TimeSpan.FromSeconds(Math.Max(0, state.BalanceSeconds));
-        Console.WriteLine($"Guthaben            : {(int)span.TotalHours}:{span.Minutes:00}:{span.Seconds:00}");
-        Console.WriteLine($"Tagesbudget         : {state.Config.DailyGrantMinutes} min");
-        Console.WriteLine($"Deckel              : {state.Config.CapMinutes} min");
-        Console.WriteLine($"Warnung bei         : {state.Config.WarnMinutes} min");
-        Console.WriteLine($"Letzte Gutschrift   : {state.LastAccrualDate}");
-        Console.WriteLine($"Passwort gesetzt    : {(state.HasPassword ? "ja" : "NEIN")}");
-        Console.WriteLine($"Zeitmanipulationen  : {state.ClockTamperEvents}");
-        Console.WriteLine($"Zuletzt gespeichert : {state.LastSaved:g}");
+        Console.WriteLine($"Balance          : {(int)span.TotalHours}:{span.Minutes:00}:{span.Seconds:00}");
+        Console.WriteLine($"Per day          : {state.Config.DailyGrantMinutes} min");
+        Console.WriteLine($"Cap              : {state.Config.CapMinutes} min");
+        Console.WriteLine($"Warn at          : {state.Config.WarnMinutes} min");
+        Console.WriteLine($"Last top-up      : {state.LastAccrualDate}");
+        Console.WriteLine($"Password set     : {(state.HasPassword ? "yes" : "NO")}");
+        Console.WriteLine($"Clock tampering  : {state.ClockTamperEvents}");
+        Console.WriteLine($"Last saved       : {state.LastSaved:g}");
         return 0;
     }
 
     private static void PrintUsage()
     {
         Console.WriteLine("""
-            MonkeyService - Verwaltungsbefehle
+            MonkeyService - maintenance commands
 
               init --password <pw> [--daily <min>] [--cap <min>]
-                   [--grace <sek>] [--balance <min>]
-                                Erstinstallation: Passwort und Grundwerte setzen.
-                                Statt --password geht auch --password-stdin.
+                   [--grace <sec>] [--balance <min>]
+                                First-time setup: set password and defaults.
+                                --password-stdin works instead of --password.
 
-              status            Aktuellen Zustand anzeigen (als Administrator).
-              watchdog          Interne Wartung. Wird von der geplanten Aufgabe
-                                aufgerufen, nicht von Hand.
+              status            Show the current state (as administrator).
+              watchdog          Internal upkeep. Called by the scheduled task,
+                                not by hand.
 
-            Ohne Befehl laeuft das Programm als Windows-Dienst.
+            With no command the program runs as a Windows service.
             """);
     }
 

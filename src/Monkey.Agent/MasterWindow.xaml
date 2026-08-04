@@ -2,9 +2,9 @@
 <Window x:Class="Monkey.Agent.MasterWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Monkey – Master-Steuerung"
-        Width="520" Height="700"
-        MinWidth="440" MinHeight="360"
+        Title="Monkey – Control Panel"
+        Width="690" Height="700"
+        MinWidth="430" MinHeight="360"
         ResizeMode="CanResize"
         SizeToContent="Manual"
         WindowStartupLocation="CenterScreen"
@@ -44,43 +44,63 @@
         </Style>
     </Window.Resources>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition x:Name="GimmickColumn" Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Reine Zierde: haengt links am Layout, ohne eigenen Hintergrund und
+             ohne Beschriftung. Nimmt keine Mausklicks an und wird bei schmalem
+             Fenster ausgeblendet, damit das Layout nicht leidet. -->
+        <Image x:Name="Gimmick"
+               Grid.Column="0"
+               Source="Assets/monkey-fries.png"
+               Width="140"
+               Margin="12,0,0,20"
+               VerticalAlignment="Bottom"
+               HorizontalAlignment="Center"
+               IsHitTestVisible="False"
+               RenderOptions.BitmapScalingMode="HighQuality"/>
+
+    <ScrollViewer Grid.Column="1"
+                  VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                   Padding="16,16,16,16">
         <StackPanel>
 
-            <TextBlock x:Name="BalanceText" Text="Guthaben: –"
+            <TextBlock x:Name="BalanceText" Text="Balance: –"
                        FontSize="19" FontWeight="SemiBold" Margin="0,0,0,3" TextWrapping="Wrap"/>
             <TextBlock x:Name="StateText" Text="" Foreground="#FF555560"
                        Margin="0,0,0,14" TextWrapping="Wrap"/>
 
-            <GroupBox Header="Master-Passwort">
+            <GroupBox Header="Master password">
                 <StackPanel>
                     <PasswordBox x:Name="MasterPassword" Padding="4,4" FontSize="14"/>
-                    <TextBlock Text="Wird für jede Aktion unten gebraucht und nur im Dienst geprüft."
+                    <TextBlock Text="Needed for everything below. Only the service ever checks it."
                                Style="{StaticResource Hint}" Margin="0,5,0,0"/>
-                    <Button x:Name="RevealChangePasswordButton" Content="Master-Passwort ändern …"
+                    <Button x:Name="RevealChangePasswordButton" Content="Change master password …"
                             Click="OnRevealChangePassword" HorizontalAlignment="Left" Margin="0,8,0,0"/>
                 </StackPanel>
             </GroupBox>
 
-            <GroupBox x:Name="ChangePasswordGroup" Header="Master-Passwort ändern" Visibility="Collapsed">
+            <GroupBox x:Name="ChangePasswordGroup" Header="Change master password" Visibility="Collapsed">
                 <StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                        <TextBlock Text="Neu:" Style="{StaticResource RowLabel}" Width="92"/>
+                        <TextBlock Text="New:" Style="{StaticResource RowLabel}" Width="92"/>
                         <PasswordBox x:Name="NewPassword" Width="220" Padding="4,3"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="Wiederholen:" Style="{StaticResource RowLabel}" Width="92"/>
+                        <TextBlock Text="Repeat:" Style="{StaticResource RowLabel}" Width="92"/>
                         <PasswordBox x:Name="NewPasswordRepeat" Width="220" Padding="4,3"/>
                     </StackPanel>
-                    <Button x:Name="ChangePasswordButton" Content="Passwort ändern" Click="OnChangePassword"
+                    <Button x:Name="ChangePasswordButton" Content="Change password" Click="OnChangePassword"
                             HorizontalAlignment="Right" Margin="0,10,0,0"/>
                 </StackPanel>
             </GroupBox>
 
-            <GroupBox Header="Kontrolle pausieren">
+            <GroupBox Header="Pause the limit">
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Dauer:" Style="{StaticResource RowLabel}"/>
+                    <TextBlock Text="For:" Style="{StaticResource RowLabel}"/>
                     <ComboBox x:Name="PauseMinutes" Width="80" IsEditable="True" Text="60"
                               VerticalAlignment="Center">
                         <ComboBoxItem>15</ComboBoxItem>
@@ -89,13 +109,13 @@
                         <ComboBoxItem>120</ComboBoxItem>
                         <ComboBoxItem>240</ComboBoxItem>
                     </ComboBox>
-                    <TextBlock Text="Min." Margin="6,0,0,0"/>
-                    <Button x:Name="ResumeButton" Content="Pause beenden" Click="OnResume" Margin="12,0,8,0"/>
-                    <Button x:Name="PauseButton" Content="Pause starten" Click="OnPause" IsDefault="True"/>
+                    <TextBlock Text="min" Margin="6,0,0,0"/>
+                    <Button x:Name="ResumeButton" Content="End pause" Click="OnResume" Margin="12,0,8,0"/>
+                    <Button x:Name="PauseButton" Content="Start pause" Click="OnPause" IsDefault="True"/>
                 </StackPanel>
             </GroupBox>
 
-            <GroupBox Header="Guthaben ändern">
+            <GroupBox Header="Adjust balance">
                 <StackPanel>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                         <Button x:Name="Minus30Button" Content="−30 min" Click="OnMinus30"
@@ -107,7 +127,7 @@
                 </StackPanel>
             </GroupBox>
 
-            <GroupBox Header="Einstellungen">
+            <GroupBox Header="Settings">
                 <StackPanel>
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -123,30 +143,30 @@
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Pro Tag:" Style="{StaticResource RowLabel}" Margin="0,4,10,4"/>
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Per day:" Style="{StaticResource RowLabel}" Margin="0,4,10,4"/>
                         <TextBox   Grid.Row="0" Grid.Column="1" x:Name="DailyMinutes" Style="{StaticResource Field}" Margin="0,4"/>
-                        <TextBlock Grid.Row="0" Grid.Column="2" Text="Minuten" Style="{StaticResource Hint}"/>
+                        <TextBlock Grid.Row="0" Grid.Column="2" Text="minutes" Style="{StaticResource Hint}"/>
 
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Höchstguthaben:" Style="{StaticResource RowLabel}" Margin="0,4,10,4"/>
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Balance cap:" Style="{StaticResource RowLabel}" Margin="0,4,10,4"/>
                         <TextBox   Grid.Row="1" Grid.Column="1" x:Name="CapMinutes" Style="{StaticResource Field}" Margin="0,4"/>
-                        <TextBlock Grid.Row="1" Grid.Column="2" Text="Minuten – Deckel für den Übertrag" Style="{StaticResource Hint}"/>
+                        <TextBlock Grid.Row="1" Grid.Column="2" Text="minutes – how much can pile up" Style="{StaticResource Hint}"/>
 
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Warnung bei:" Style="{StaticResource RowLabel}" Margin="0,4,10,4"/>
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Warn at:" Style="{StaticResource RowLabel}" Margin="0,4,10,4"/>
                         <TextBox   Grid.Row="2" Grid.Column="1" x:Name="WarnMinutes" Style="{StaticResource Field}" Margin="0,4"/>
-                        <TextBlock Grid.Row="2" Grid.Column="2" Text="Minuten Restzeit" Style="{StaticResource Hint}"/>
+                        <TextBlock Grid.Row="2" Grid.Column="2" Text="minutes left" Style="{StaticResource Hint}"/>
 
-                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Vorwarnung:" Style="{StaticResource RowLabel}" Margin="0,4,10,4"/>
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Grace period:" Style="{StaticResource RowLabel}" Margin="0,4,10,4"/>
                         <TextBox   Grid.Row="3" Grid.Column="1" x:Name="GraceSeconds" Style="{StaticResource Field}" Margin="0,4"/>
-                        <TextBlock Grid.Row="3" Grid.Column="2" Text="Sekunden vor der Abmeldung" Style="{StaticResource Hint}"/>
+                        <TextBlock Grid.Row="3" Grid.Column="2" Text="seconds before signing out" Style="{StaticResource Hint}"/>
 
-                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Puffer nach Anmeldung:" Style="{StaticResource RowLabel}" Margin="0,4,10,4"/>
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Buffer after sign-in:" Style="{StaticResource RowLabel}" Margin="0,4,10,4"/>
                         <TextBox   Grid.Row="4" Grid.Column="1" x:Name="LoginGraceSeconds" Style="{StaticResource Field}" Margin="0,4"/>
-                        <TextBlock Grid.Row="4" Grid.Column="2" Text="Sekunden bei leerem Konto" Style="{StaticResource Hint}"/>
+                        <TextBlock Grid.Row="4" Grid.Column="2" Text="seconds when the balance is empty" Style="{StaticResource Hint}"/>
                     </Grid>
 
-                    <CheckBox x:Name="PauseOnLock" Content="Uhr anhalten, wenn die Sitzung gesperrt ist" Margin="0,8,0,4"/>
-                    <CheckBox x:Name="PauseOnScreensaver" Content="Uhr anhalten, wenn der Bildschirmschoner läuft"/>
-                    <Button x:Name="SaveConfigButton" Content="Einstellungen speichern" Click="OnSaveConfig"
+                    <CheckBox x:Name="PauseOnLock" Content="Pause the clock while the session is locked" Margin="0,8,0,4"/>
+                    <CheckBox x:Name="PauseOnScreensaver" Content="Pause the clock while the screensaver runs"/>
+                    <Button x:Name="SaveConfigButton" Content="Save settings" Click="OnSaveConfig"
                             HorizontalAlignment="Right" Margin="0,10,0,0"/>
 
                     <Border x:Name="MessageBorder" Background="#FFE8E8EE" CornerRadius="5" Padding="10,7"
@@ -158,4 +178,5 @@
 
         </StackPanel>
     </ScrollViewer>
+    </Grid>
 </Window>

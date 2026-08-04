@@ -24,8 +24,8 @@ public partial class WarningWindow : Window
     {
         InitializeComponent();
 
-        Headline.Text = minutes == 1 ? "Noch 1 Minute" : $"Noch {minutes} Minuten";
-        Subline.Text = "Computerzeit für heute";
+        Headline.Text = minutes == 1 ? "1 minute left" : $"{minutes} minutes left";
+        Subline.Text = "of screen time today";
 
         if (minutes <= 1)
             Headline.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x6B, 0x5E));

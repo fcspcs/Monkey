@@ -35,7 +35,7 @@ internal sealed class PipeServer(GuardEngine engine) : BackgroundService
             }
             catch (Exception ex)
             {
-                Log.Write($"Pipe-Fehler: {ex.Message}");
+                Log.Write($"Pipe error: {ex.Message}");
                 try { await Task.Delay(TimeSpan.FromSeconds(1), token); }
                 catch (OperationCanceledException) { return; }
             }
@@ -55,13 +55,13 @@ internal sealed class PipeServer(GuardEngine engine) : BackgroundService
         {
             var request = Request.FromJson(line);
             response = request is null
-                ? Response.Fail("Anfrage nicht lesbar.")
+                ? Response.Fail("Request could not be read.")
                 : engine.Handle(request);
         }
         catch (Exception ex)
         {
-            Log.Write($"Anfrage fehlgeschlagen: {ex.Message}");
-            response = Response.Fail("Interner Fehler im Dienst.");
+            Log.Write($"Request failed: {ex.Message}");
+            response = Response.Fail("Internal error in the service.");
         }
 
         await writer.WriteLineAsync(response.ToJson().ReplaceLineEndings(" "));

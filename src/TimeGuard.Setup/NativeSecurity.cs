@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using Microsoft.Win32.SafeHandles;
 
 namespace TimeGuard.Setup;
 
@@ -41,6 +42,44 @@ internal static class NativeSecurity
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool CloseHandle(IntPtr handle);
+
+    private const uint GENERIC_READ = 0x80000000;
+    private const uint FILE_SHARE_ALL = 0x1 | 0x2 | 0x4;
+    private const uint OPEN_EXISTING = 3;
+    private const uint FILE_FLAG_BACKUP_SEMANTICS = 0x02000000;
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern SafeFileHandle CreateFileW(string name, uint access, uint share,
+        IntPtr security, uint disposition, uint flags, IntPtr template);
+
+    /// <summary>
+    /// Liest eine Datei ueber das Sicherungs-Privileg, ohne ihre Rechte zu
+    /// veraendern. So laesst sich der Passwort-Hash einer gehaerteten Installation
+    /// pruefen, ohne den Schutz aufzuweichen - ein Fehlversuch hinterlaesst nichts.
+    /// Gibt null zurueck, wenn die Datei fehlt oder nicht lesbar ist.
+    /// </summary>
+    public static byte[]? ReadPrivileged(string path)
+    {
+        try
+        {
+            EnablePrivilege("SeBackupPrivilege");
+            var handle = CreateFileW(path, GENERIC_READ, FILE_SHARE_ALL, IntPtr.Zero,
+                OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, IntPtr.Zero);
+            if (handle.IsInvalid) { handle.Dispose(); return null; }
+
+            using (handle)
+            using (var stream = new FileStream(handle, FileAccess.Read))
+            using (var buffer = new MemoryStream())
+            {
+                stream.CopyTo(buffer);
+                return buffer.ToArray();
+            }
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     private static void EnablePrivilege(string name)
     {

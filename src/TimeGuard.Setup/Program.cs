@@ -80,6 +80,25 @@ internal static class Program
             return Pause(2);
         }
 
+        // Ist noch Zustand einer frueheren (evtl. defekten) Installation da, wird er
+        // nur ueberschrieben, wenn das bestehende Master-Passwort stimmt. Sonst
+        // waere das Neu-Aufsetzen ein passwortfreier Weg, den Schutz abzuraeumen.
+        var existing = TryReadExistingState();
+        if (existing is { HasPassword: true })
+        {
+            Console.WriteLine();
+            Warn("Es ist bereits eine TimeGuard-Installation vorhanden (moeglicherweise defekt).");
+            Console.WriteLine("Zum Neu-Aufsetzen bitte das BESTEHENDE Master-Passwort eingeben.");
+            var check = AskPassword("Bestehendes Master-Passwort");
+            if (!PasswordHash.Verify(check, existing.PasswordHash, existing.PasswordSalt, existing.PasswordIterations))
+            {
+                Console.WriteLine();
+                Error("Falsches Master-Passwort. Neuinstallation abgebrochen.");
+                return Pause(2);
+            }
+            Console.WriteLine("  Passwort ok - die vorhandene Installation wird ersetzt.");
+        }
+
         var daily = AskInt("Tagesbudget in Minuten", 30);
         var cap = AskInt("Hoechstguthaben (Deckel) in Minuten", Math.Max(daily, 240));
         if (cap < daily) cap = daily;
@@ -216,6 +235,19 @@ internal static class Program
     }
 
     // ---------------------------------------------------------------- Bausteine
+
+    /// <summary>
+    /// Liest den Zustand einer vorhandenen Installation, falls einer da ist - ueber
+    /// das Sicherungs-Privileg und ohne die Rechte zu veraendern. Gibt null zurueck,
+    /// wenn nichts (Lesbares) vorhanden ist.
+    /// </summary>
+    private static GuardState? TryReadExistingState()
+    {
+        var bytes = NativeSecurity.ReadPrivileged(Paths.StateFile);
+        if (bytes is null || bytes.Length == 0) return null;
+        try { return GuardState.FromJson(System.Text.Encoding.UTF8.GetString(bytes)); }
+        catch { return null; }
+    }
 
     private static readonly string[] PayloadFiles = ["TimeGuardService.exe", "TimeGuardAgent.exe"];
 

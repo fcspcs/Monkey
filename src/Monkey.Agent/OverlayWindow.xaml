@@ -1,0 +1,42 @@
+<Window x:Class="Monkey.Agent.OverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Monkey"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ResizeMode="NoResize"
+        SizeToContent="WidthAndHeight"
+        Focusable="False"
+        IsHitTestVisible="False"
+        UseLayoutRounding="True">
+
+    <Border x:Name="Panel"
+            CornerRadius="12"
+            Padding="16,9"
+            Background="#E0101014"
+            BorderBrush="#33FFFFFF"
+            BorderThickness="1">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="16" ShadowDepth="2" Opacity="0.5" Color="Black"/>
+        </Border.Effect>
+
+        <StackPanel MinWidth="118">
+            <TextBlock x:Name="TimeLabel"
+                       Text="--:--:--"
+                       FontFamily="Segoe UI Semibold"
+                       FontSize="23"
+                       Foreground="#F2FFFFFF"
+                       HorizontalAlignment="Center"/>
+            <TextBlock x:Name="CaptionLabel"
+                       Text="verbleibend"
+                       FontFamily="Segoe UI"
+                       FontSize="10.5"
+                       Foreground="#99FFFFFF"
+                       HorizontalAlignment="Center"
+                       Margin="0,1,0,0"/>
+        </StackPanel>
+    </Border>
+</Window>

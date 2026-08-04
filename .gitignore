@@ -2,12 +2,12 @@
 bin/
 obj/
 build/
-src/TimeGuard.Setup/payload/
+src/Monkey.Setup/payload/
 
 # dist wird ignoriert - AUSSER der fertigen Installer-Datei, die absichtlich
 # im Repo liegt, damit sie sich weitergeben laesst.
 dist/*
-!dist/TimeGuardSetup.exe
+!dist/MonkeySetup.exe
 
 # .NET / Rider / VS
 *.user

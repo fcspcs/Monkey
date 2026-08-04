@@ -1,0 +1,86 @@
+using System.Text.Json;
+
+namespace Monkey.Core;
+
+public static class RequestType
+{
+    public const string Status = "status";
+    public const string Heartbeat = "heartbeat";
+    public const string Pause = "pause";
+    public const string Resume = "resume";
+    public const string AddTime = "addtime";
+    public const string SetConfig = "setconfig";
+    public const string ChangePassword = "changepassword";
+
+    /// <summary>Autorisierter Abbau aller Sperren, damit sich das Tool entfernen laesst.</summary>
+    public const string Unlock = "unlock";
+}
+
+public sealed class Request
+{
+    public string Type { get; set; } = RequestType.Status;
+
+    /// <summary>Master-Passwort. Wird ausschliesslich im Dienst geprueft.</summary>
+    public string? Password { get; set; }
+
+    public string? NewPassword { get; set; }
+    public int Minutes { get; set; }
+
+    // Vom Agent gemeldeter Sitzungszustand.
+    public int SessionId { get; set; }
+    public bool ScreensaverRunning { get; set; }
+
+    public GuardConfig? Config { get; set; }
+
+    public string ToJson() => JsonSerializer.Serialize(this, GuardState.JsonOptions);
+    public static Request? FromJson(string json) => JsonSerializer.Deserialize<Request>(json, GuardState.JsonOptions);
+}
+
+public sealed class StatusDto
+{
+    public double BalanceSeconds { get; set; }
+
+    /// <summary>
+    /// Angerechnete Zeit seit der Anmeldung dieser Sitzung. Fuer die Anzeige im
+    /// Hochzaehl-Modus.
+    /// </summary>
+    public double SessionElapsedSeconds { get; set; }
+
+    public bool Paused { get; set; }
+    public DateTimeOffset? PauseUntil { get; set; }
+
+    /// <summary>Laeuft die Uhr gerade, also wird gerade verbraucht?</summary>
+    public bool Counting { get; set; }
+
+    /// <summary>Sekunden bis zur Zwangsabmeldung, sonst null.</summary>
+    public double? SecondsUntilLogoff { get; set; }
+
+    /// <summary>
+    /// Gerade ueberschrittene Warnschwelle in Minuten. Bleibt kurz gesetzt, damit
+    /// der Agent sie beim naechsten Abruf zuverlaessig aufgreift.
+    /// </summary>
+    public int? WarningMinutes { get; set; }
+
+    /// <summary>Wie viel per Master-Passwort pro Vorgang nachgelegt werden darf.</summary>
+    public int MaxManualGrantMinutes { get; set; }
+
+    public int DailyGrantMinutes { get; set; }
+    public int CapMinutes { get; set; }
+    public int ClockTamperEvents { get; set; }
+    public bool PasswordConfigured { get; set; }
+    public GuardConfig? Config { get; set; }
+}
+
+public sealed class Response
+{
+    public bool Ok { get; set; }
+    public string? Message { get; set; }
+    public StatusDto? Status { get; set; }
+
+    public static Response Fail(string message) => new() { Ok = false, Message = message };
+    public static Response Success(string? message = null, StatusDto? status = null) =>
+        new() { Ok = true, Message = message, Status = status };
+
+    public string ToJson() => JsonSerializer.Serialize(this, GuardState.JsonOptions);
+    public static Response? FromJson(string json) => JsonSerializer.Deserialize<Response>(json, GuardState.JsonOptions);
+}

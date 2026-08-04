@@ -1,10 +1,12 @@
-# TimeGuard
+<img src="assets/monkey.png" width="110" align="right" alt="Monkey">
+
+# Monkey
 
 **Ein tägliches Zeitkontingent für den eigenen PC — nicht verbrauchte Zeit verfällt nicht, sondern wird übertragen.**
 
 Windows-Tool für Leute, die weniger Zeit am Rechner verbringen wollen, ohne sich
 dabei auf reine Willenskraft zu verlassen. Ist das Kontingent aufgebraucht,
-meldet TimeGuard den Benutzer ab. Alles, was Zeit hinzufügt oder die Kontrolle
+meldet Monkey den Benutzer ab. Alles, was Zeit hinzufügt oder die Kontrolle
 aussetzt, ist mit einem Master-Passwort geschützt.
 
 ---
@@ -15,7 +17,7 @@ Die meisten Bildschirmzeit-Tools kennen nur „heute 2 Stunden, morgen wieder
 2 Stunden". Wer heute nichts verbraucht, hat nichts davon — und wer sein Budget
 mittags aufbraucht, sitzt abends auf dem Trockenen.
 
-TimeGuard macht daraus ein **Konto**:
+Monkey macht daraus ein **Konto**:
 
 - Jeden Tag kommt ein Kontingent dazu (Voreinstellung **30 Minuten**).
 - **Was du nicht verbrauchst, bleibt liegen** und wächst an — bis zu einer
@@ -52,7 +54,7 @@ aussprechen musst. Genau diese kleine Hürde ist der Punkt.
 
 ## Installieren
 
-Es gibt **eine einzige Datei**: [`dist/TimeGuardSetup.exe`](dist/TimeGuardSetup.exe).
+Es gibt **eine einzige Datei**: [`dist/MonkeySetup.exe`](dist/MonkeySetup.exe).
 Dienst und Anzeige stecken darin.
 
 1. Datei herunterladen und **doppelklicken**, die Windows-Abfrage bestätigen.
@@ -66,6 +68,11 @@ Master-Passwort.
 
 > **Das Master-Passwort ist der einzige Schlüssel.** Bewahre es außerhalb des
 > Rechners auf — oder gib es der Person deines Vertrauens.
+
+> **Umstieg von der Vorgängerversion „TimeGuard":** Zuerst TimeGuard mit der
+> alten `TimeGuardSetup.exe` entfernen (Punkt `2`, altes Master-Passwort) —
+> sonst läuft dessen Dienst weiter und meldet dich weiterhin ab. Der
+> Monkey-Installer erkennt das und weist darauf hin.
 
 ---
 
@@ -107,11 +114,11 @@ das das ganze System entwertet.
 ## Wie es aufgebaut ist
 
 ```
-TimeGuardService.exe   Windows-Dienst (LocalSystem). Zählt, entscheidet,
+MonkeyService.exe   Windows-Dienst (LocalSystem). Zählt, entscheidet,
                        prüft das Passwort, meldet ab, schützt sich selbst.
         ▲  Named Pipe
         ▼
-TimeGuardAgent.exe     Pro Benutzer: Overlay, Tray, Warnung, Master-Fenster.
+MonkeyAgent.exe     Pro Benutzer: Overlay, Tray, Warnung, Master-Fenster.
                        Reine Anzeige, ohne eigene Befugnis.
 ```
 
@@ -122,7 +129,7 @@ Benutzerkonto.
 **Ehrlich zur Reichweite:** Ein lokaler Administrator ist unter Windows laut
 Microsofts eigenen Kriterien keine Sicherheitsgrenze — ein Programm ohne
 signierten Kernel-Treiber kann das nicht ändern (auch kommerzielle Tools nicht).
-TimeGuard setzt darum auf viele sich gegenseitig wiederherstellende Sperren: Ein
+Monkey setzt darum auf viele sich gegenseitig wiederherstellende Sperren: Ein
 Umgehen ist aufwendig und bewusst, statt beiläufig. Genau darum geht es.
 
 ---
@@ -130,9 +137,9 @@ Umgehen ist aufwendig und bewusst, statt beiläufig. Genau darum geht es.
 ## Selbst bauen
 
 ```powershell
-git clone https://github.com/fcspcs/TimeGuard.git
-cd TimeGuard
-.\build.ps1     # Ergebnis: dist\TimeGuardSetup.exe
+git clone https://github.com/fcspcs/Monkey.git
+cd Monkey
+.\build.ps1     # Ergebnis: dist\MonkeySetup.exe
 ```
 
 Braucht das .NET 8 SDK. Die Installer-Datei im Repository wird bei jeder
@@ -142,4 +149,10 @@ Braucht das .NET 8 SDK. Die Installer-Datei im Repository wird bei jeder
 
 ## Lizenz
 
-MIT — siehe [LICENSE](LICENSE).
+Der Quellcode steht unter MIT — siehe [LICENSE](LICENSE).
+
+Das Symbol (`assets/monkey.png`) ist eine Zeichnung nach dem bekannten
+„Awkward Look Monkey Puppet"-Meme und stammt nicht von mir; es ist **nicht** Teil
+der MIT-Lizenz. Wer das Projekt weiterverwendet, sollte dafür ein eigenes Symbol
+einsetzen — `assets/make-icon.ps1` erzeugt aus einem beliebigen PNG die passende
+`monkey.ico`.

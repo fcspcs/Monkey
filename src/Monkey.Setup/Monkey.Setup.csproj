@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>MonkeySetup</AssemblyName>
+    <RootNamespace>Monkey.Setup</RootNamespace>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\..\assets\monkey.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Monkey.Core\Monkey.Core.csproj" />
+  </ItemGroup>
+
+  <!--
+    Dienst und Agent werden als je eine Einzeldatei-Exe in den Installer
+    eingebettet. build.ps1 legt sie vorher unter payload\ ab; ohne diese Dateien
+    (leerer Glob) baut das Projekt weiterhin, enthaelt dann aber keine Nutzlast.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="payload\*.exe">
+      <LogicalName>%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>MonkeyAgent</AssemblyName>
+    <RootNamespace>Monkey.Agent</RootNamespace>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <ApplicationIcon>..\..\assets\monkey.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <!-- Symbol auch zur Laufzeit: fuer Tray- und Fenstersymbol. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\assets\monkey.ico">
+      <LogicalName>monkey.ico</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <!--
+    UseWindowsForms zieht System.Drawing und System.Windows.Forms als globale
+    Usings herein und macht damit Color, Brush und Application mehrdeutig.
+    Das Projekt ist WPF mit einem Tray-Symbol aus WinForms - also raus damit und
+    die wenigen WinForms-Typen ueber Aliase ansprechen.
+  -->
+  <ItemGroup>
+    <Using Remove="System.Drawing" />
+    <Using Remove="System.Windows.Forms" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Monkey.Core\Monkey.Core.csproj" />
+  </ItemGroup>
+
+</Project>

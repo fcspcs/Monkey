@@ -93,8 +93,8 @@ internal static class Program
         Console.WriteLine();
         Section("Installation laeuft");
 
-        // Rest einer frueheren Einrichtung entfernen.
-        SafeDelete(Paths.TeardownMarker);
+        Step("Reste einer frueheren Installation entfernen");
+        CleanForFreshInstall();
 
         Step("Programmdateien schreiben");
         ExtractPayload(TargetDir);
@@ -184,9 +184,34 @@ internal static class Program
         foreach (var dir in new[] { TargetDir, Paths.DataDir })
         {
             if (!Directory.Exists(dir)) continue;
-            RunHidden("icacls.exe", ["\"" + dir + "\"", "/reset", "/T", "/C", "/Q"]);
-            try { Directory.Delete(dir, recursive: true); }
+            try { NativeSecurity.ForceDelete(dir); }
             catch (Exception ex) { Warn($"'{dir}' blieb teils zurueck ({ex.Message}). Nach einem Neustart erneut versuchen."); }
+        }
+    }
+
+    /// <summary>
+    /// Vor einer frischen Installation aufraeumen: laufende Prozesse beenden, die
+    /// Watchdog-Aufgabe und einen etwaigen Restdienst entfernen und die - womoeglich
+    /// gegen Administratoren gesperrten - Ordner freiraeumen. Ohne das schlaegt das
+    /// Schreiben nach einem abgebrochenen frueheren Versuch fehl.
+    /// </summary>
+    private static void CleanForFreshInstall()
+    {
+        foreach (var name in new[] { "TimeGuardAgent", "TimeGuardService" })
+            foreach (var p in Process.GetProcessesByName(name))
+                TryKill(p);
+
+        SchTasks("/Delete", "/F", "/TN", "TimeGuard Watchdog");
+        Sc("stop", ServiceName);
+        Sc("delete", ServiceName);
+
+        foreach (var dir in new[] { TargetDir, Paths.DataDir })
+        {
+            try { NativeSecurity.ForceDelete(dir); }
+            catch (Exception ex)
+            {
+                Warn($"'{dir}' liess sich nicht vollstaendig entfernen ({ex.Message}).");
+            }
         }
     }
 

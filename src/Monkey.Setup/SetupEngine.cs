@@ -42,13 +42,34 @@ internal static class SetupEngine
     /// <summary>Laeuft noch der Dienst der Vorgaengerversion "TimeGuard"?</summary>
     public static bool LegacyInstalled() => ServiceKeyExists(LegacyServiceName);
 
+    /// <summary>
+    /// Fragt den Dienst ueber die Dienststeuerung ab statt ueber die Registry.
+    /// Der Registry-Schluessel eines laufenden Dienstes ist absichtlich gesperrt -
+    /// wer ihn zum Erkennen benutzt, haelt den eigenen Dienst faelschlich fuer
+    /// nicht vorhanden und ueberspringt dann den Abbau.
+    /// </summary>
     private static bool ServiceKeyExists(string name)
     {
         try
         {
-            using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
-                @"SYSTEM\CurrentControlSet\Services\" + name);
-            return key is not null;
+            var info = new ProcessStartInfo
+            {
+                FileName = "sc.exe",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            info.ArgumentList.Add("query");
+            info.ArgumentList.Add(name);
+
+            using var process = Process.Start(info);
+            if (process is null) return false;
+
+            process.WaitForExit(15000);
+
+            // 0 = vorhanden, 1060 = nicht vorhanden.
+            return process.ExitCode == 0;
         }
         catch { return false; }
     }

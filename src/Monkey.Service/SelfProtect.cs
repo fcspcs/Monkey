@@ -169,11 +169,18 @@ internal static class SelfProtect
 
             // Administratoren duerfen lesen, aber nicht aendern oder loeschen. Das
             // verhindert das einfache Abschalten ueber Start=4.
+            //
+            // Wichtig: hier NICHT RegistryRights.WriteKey verweigern. Dieser Wert
+            // schliesst ReadPermissions (READ_CONTROL) mit ein, und genau das wird
+            // zum Oeffnen des Schluessels gebraucht - ein solcher Deny sperrt also
+            // versehentlich auch das Lesen aus, sodass der Dienst fuer die eigenen
+            // Werkzeuge unsichtbar wird. Deshalb nur die einzelnen Schreibrechte.
             security.AddAccessRule(new RegistryAccessRule(
                 admins, RegistryRights.ReadKey, inherit, PropagationFlags.None, AccessControlType.Allow));
             security.AddAccessRule(new RegistryAccessRule(
-                admins, RegistryRights.SetValue | RegistryRights.CreateSubKey | RegistryRights.Delete
-                        | RegistryRights.ChangePermissions | RegistryRights.WriteKey,
+                admins, RegistryRights.SetValue | RegistryRights.CreateSubKey
+                        | RegistryRights.CreateLink | RegistryRights.Delete
+                        | RegistryRights.ChangePermissions | RegistryRights.TakeOwnership,
                 inherit, PropagationFlags.None, AccessControlType.Deny));
 
             security.AddAccessRule(new RegistryAccessRule(

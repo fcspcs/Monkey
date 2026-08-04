@@ -1,8 +1,8 @@
-name: Installer bauen
+name: Build installer
 
-# Baut bei jeder Quellcode-Aenderung die Setup-Datei und legt die aktuelle
-# Fassung als dist/MonkeySetup.exe zurueck ins Repo - so ist die Exe im
-# Repository immer aktuell und laesst sich weitergeben.
+# Builds the setup file on every source change and puts the fresh
+# dist/MonkeySetup.exe back into the repository, so the download link always
+# points at an up-to-date installer.
 
 on:
   push:
@@ -24,19 +24,19 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - name: Auschecken
+      - name: Check out
         uses: actions/checkout@v4
 
-      - name: .NET 8 einrichten
+      - name: Set up .NET 8
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
-      - name: Installer bauen
+      - name: Build installer
         shell: pwsh
         run: ./build.ps1
 
-      - name: Aktualisierte Exe zuruecklegen
+      - name: Commit the updated installer
         shell: pwsh
         run: |
           git config user.name  "github-actions[bot]"
@@ -44,9 +44,9 @@ jobs:
           git add -f dist/MonkeySetup.exe
           git diff --cached --quiet
           if ($LASTEXITCODE -ne 0) {
-            git commit -m "CI: Installer aktualisiert [skip ci]"
+            git commit -m "CI: refresh installer [skip ci]"
             git push
-            Write-Host "Installer im Repo aktualisiert."
+            Write-Host "Installer updated in the repository."
           } else {
-            Write-Host "Installer unveraendert - nichts zu committen."
+            Write-Host "Installer unchanged - nothing to commit."
           }

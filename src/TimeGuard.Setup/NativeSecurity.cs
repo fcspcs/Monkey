@@ -84,12 +84,33 @@ internal static class NativeSecurity
             return;
         }
 
-        // Erst alle Sperren im Baum loesen, dann rekursiv loeschen.
-        foreach (var entry in Directory.EnumerateFileSystemEntries(path, "*", SearchOption.AllDirectories))
-            Unlock(entry, Directory.Exists(entry));
-        Unlock(path, isDirectory: true);
-
+        // Wichtig: erst den Ordner selbst entsperren, dann hineinschauen. Ein
+        // Ordner, der schon das Auflisten verweigert, laesst sich sonst nicht
+        // einmal aufzaehlen - die Besitzuebernahme muss also vor dem Absteigen
+        // passieren.
+        UnlockTree(path);
         Directory.Delete(path, recursive: true);
+    }
+
+    private static void UnlockTree(string dir)
+    {
+        Unlock(dir, isDirectory: true);
+
+        IEnumerable<string> children;
+        try
+        {
+            children = Directory.EnumerateFileSystemEntries(dir);
+        }
+        catch
+        {
+            return; // liess sich trotz Freigabe nicht auflisten - dann eben nicht.
+        }
+
+        foreach (var child in children)
+        {
+            if (Directory.Exists(child)) UnlockTree(child);
+            else Unlock(child, isDirectory: false);
+        }
     }
 
     private static readonly SecurityIdentifier Admins =

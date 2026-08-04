@@ -1,0 +1,64 @@
+name: Publish release
+
+# Ein Tag wie v1.1 loest die Veroeffentlichung aus: Installer aus dem getaggten
+# Stand bauen, Release anlegen, MonkeySetup.exe daranhaengen.
+#
+# Der Downloadlink in der README zeigt auf das jeweils neueste Release
+# (releases/latest/download/MonkeySetup.exe) - der Dateiname muss deshalb
+# unveraendert bleiben, sonst geht der Link ins Leere.
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Vorhandener Tag, der veroeffentlicht werden soll, z. B. v1.1'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+          # Vollstaendig, damit die Beschreibung des Tags als Release-Text
+          # ausgelesen werden kann.
+          fetch-depth: 0
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          # v1.1 -> 1.1.0: MSBuild will drei Stellen sehen.
+          $number = $env:TAG.TrimStart('v')
+          $parts = @($number.Split('.'))
+          while ($parts.Count -lt 3) { $parts += '0' }
+          ./build.ps1 -Version ($parts[0..2] -join '.')
+
+      - name: Publish the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $number = $env:TAG.TrimStart('v')
+
+          # Beschreibung eines annotierten Tags wird der Text des Releases;
+          # ohne Annotation bleibt es beim blossen Namen.
+          $notes = (git tag -l --format='%(contents)' $env:TAG | Out-String).Trim()
+          if (-not $notes) { $notes = "Monkey $number" }
+
+          gh release create $env:TAG dist/MonkeySetup.exe `
+            --title "Monkey $number" --notes $notes

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Threading;
 using TimeGuard.Core;
 
 namespace TimeGuard.Agent;
@@ -15,7 +16,11 @@ public partial class MasterWindow : Window
     private static readonly Brush Good = new SolidColorBrush(Color.FromRgb(0xDF, 0xF3, 0xE2));
     private static readonly Brush Bad = new SolidColorBrush(Color.FromRgb(0xFB, 0xE3, 0xE1));
 
+    /// <summary>Nach dieser Zeit ohne Tippen wird ein eingegebenes Passwort verworfen.</summary>
+    private static readonly TimeSpan PasswordLifetime = TimeSpan.FromSeconds(120);
+
     private readonly int _sessionId = Process.GetCurrentProcess().SessionId;
+    private readonly DispatcherTimer _passwordTimer;
 
     public MasterWindow()
     {
@@ -27,7 +32,41 @@ public partial class MasterWindow : Window
         MaxHeight = workHeight;
         if (Height > workHeight) Height = workHeight;
 
+        // Das Master-Passwort soll nicht offen im Fenster stehen bleiben: Es wird
+        // nach jeder Aktion geleert und zusätzlich, wenn es eine Weile unbenutzt
+        // herumliegt.
+        _passwordTimer = new DispatcherTimer { Interval = PasswordLifetime };
+        _passwordTimer.Tick += (_, _) =>
+        {
+            _passwordTimer.Stop();
+            if (MasterPassword.Password.Length == 0) return;
+            ClearMasterPassword();
+            Show(false, "Das Master-Passwort wurde aus Sicherheitsgründen geleert. Bitte neu eingeben.");
+        };
+
+        MasterPassword.PasswordChanged += (_, _) =>
+        {
+            _passwordTimer.Stop();
+            if (MasterPassword.Password.Length > 0) _passwordTimer.Start();
+        };
+
+        Closed += (_, _) => _passwordTimer.Stop();
         Loaded += async (_, _) => await RefreshAsync();
+    }
+
+    /// <summary>
+    /// Leert das Passwortfeld und klappt den Bereich zum Passwortwechsel wieder
+    /// zu - der setzt ja voraus, dass das Master-Passwort eingegeben ist.
+    /// </summary>
+    private void ClearMasterPassword()
+    {
+        _passwordTimer.Stop();
+        MasterPassword.Clear();
+
+        NewPassword.Clear();
+        NewPasswordRepeat.Clear();
+        ChangePasswordGroup.Visibility = Visibility.Collapsed;
+        RevealChangePasswordButton.IsEnabled = true;
     }
 
     private async Task RefreshAsync()
@@ -184,21 +223,14 @@ public partial class MasterWindow : Window
             return;
         }
 
-        var ok = await SendAsync(new Request
+        // SendAsync leert anschliessend alle Passwortfelder und klappt den Bereich
+        // wieder zu - egal ob der Wechsel geklappt hat oder nicht.
+        await SendAsync(new Request
         {
             Type = RequestType.ChangePassword,
             Password = MasterPassword.Password,
             NewPassword = NewPassword.Password,
         });
-
-        if (ok)
-        {
-            NewPassword.Clear();
-            NewPasswordRepeat.Clear();
-            MasterPassword.Clear();
-            ChangePasswordGroup.Visibility = Visibility.Collapsed;
-            RevealChangePasswordButton.IsEnabled = true;
-        }
     }
 
     private async Task<bool> SendAsync(Request request)
@@ -216,6 +248,11 @@ public partial class MasterWindow : Window
         }
 
         Show(response.Ok, response.Message ?? (response.Ok ? "Erledigt." : "Abgelehnt."));
+
+        // Nach jeder Aktion - auch nach einer abgelehnten - verschwindet das
+        // Passwort wieder aus dem Fenster.
+        ClearMasterPassword();
+
         await RefreshAsync();
         return response.Ok;
     }

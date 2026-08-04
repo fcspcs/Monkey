@@ -1,56 +1,95 @@
 # TimeGuard
 
-Tageskontingent für Computerzeit — mit dem Feature, das Time Boss Pro nicht hat:
-**nicht verbrauchte Zeit verfällt nicht, sondern wird übertragen.**
+**Ein tägliches Zeitkontingent für den eigenen PC — nicht verbrauchte Zeit verfällt nicht, sondern wird übertragen.**
 
-Ist das Kontingent aufgebraucht, wird der Benutzer abgemeldet. Die Restzeit steht
-als Overlay oben rechts. Pausieren, Zeit nachlegen, Einstellungen und das Entfernen
-brauchen das Master-Passwort.
+Windows-Tool für Leute, die weniger Zeit am Rechner verbringen wollen, ohne sich
+dabei auf reine Willenskraft zu verlassen. Ist das Kontingent aufgebraucht,
+meldet TimeGuard den Benutzer ab. Alles, was Zeit hinzufügt oder die Kontrolle
+aussetzt, ist mit einem Master-Passwort geschützt.
+
+---
+
+## Die Idee dahinter
+
+Die meisten Bildschirmzeit-Tools kennen nur „heute 2 Stunden, morgen wieder
+2 Stunden". Wer heute nichts verbraucht, hat nichts davon — und wer sein Budget
+mittags aufbraucht, sitzt abends auf dem Trockenen.
+
+TimeGuard macht daraus ein **Konto**:
+
+- Jeden Tag kommt ein Kontingent dazu (Voreinstellung **30 Minuten**).
+- **Was du nicht verbrauchst, bleibt liegen** und wächst an — bis zu einer
+  Obergrenze.
+- Dadurch lohnt es sich, sparsam zu sein: Ein paar ruhige Tage finanzieren den
+  langen Filmabend am Wochenende.
+
+Das trainiert genau die Fähigkeit, um die es eigentlich geht — **sich Zeit
+einzuteilen**, statt sie nur gedeckelt zu bekommen. Und es nimmt dem Limit die
+Härte: Man verliert nichts, man verschiebt es.
+
+Der zweite Gedanke ist die **Bindung an eine andere Person**: Das Master-Passwort
+kannst du jemandem geben, dem du vertraust. Dann ist mehr Zeit nicht mehr eine
+Frage der Selbstüberwindung im schwachen Moment, sondern eine, die du kurz
+aussprechen musst. Genau diese kleine Hürde ist der Punkt.
+
+---
+
+## Was es praktisch tut
+
+- **Zeigt die Restzeit** als kleines Overlay oben rechts. Ausblendbar, Farbe
+  wählbar, Hintergrund abschaltbar. Umschaltbar zwischen „verbleibend" und
+  „schon genutzt"; der Mauszeiger darüber zeigt jeweils den anderen Wert.
+- **Warnt rechtzeitig** (Voreinstellung: bei 10 Minuten Restzeit) mit einem
+  Fenster, das nie den Fokus stiehlt — es unterbricht also weder Tippen noch
+  Spielen.
+- **Meldet ab**, wenn das Guthaben leer ist — mit Vorwarnung zum Speichern.
+- **Zählt fair**: Die Uhr steht bei gesperrter Sitzung und laufendem
+  Bildschirmschoner; Ruhezustand kostet nichts.
+- **Lässt sich nicht nebenbei abschalten**: Der Dienst schützt sich selbst und
+  stellt seine Sperren nach jedem Start wieder her.
 
 ---
 
 ## Installieren
 
-Es gibt **eine einzige Datei**: `dist\TimeGuardSetup.exe`. Dienst und Agent stecken
-darin und werden bei der Installation herausgeschrieben.
+Es gibt **eine einzige Datei**: [`dist/TimeGuardSetup.exe`](dist/TimeGuardSetup.exe).
+Dienst und Anzeige stecken darin.
 
-1. Einmal bauen (ohne Adminrechte):
+1. Datei herunterladen und **doppelklicken**, die Windows-Abfrage bestätigen.
+2. **`1` (Installieren)** wählen, Tagesbudget festlegen, Master-Passwort setzen.
 
-   ```powershell
-   .\build.ps1
-   ```
+**Entfernen:** dieselbe Datei starten, **`2`** wählen — das verlangt das
+Master-Passwort.
 
-2. **`dist\TimeGuardSetup.exe` doppelklicken.** Windows fragt nach Adminrechten —
-   bestätigen. Dann **`1` (Installieren)** wählen, Tagesbudget bestätigen und das
-   Master-Passwort festlegen. Fertig.
-
-**Entfernen:** dieselbe `TimeGuardSetup.exe` starten und **`2` (Entfernen)**
-wählen. Das verlangt das Master-Passwort.
-
-Zum Weitergeben oder Aufheben reicht diese eine Datei.
+> Voraussetzung: **.NET 8 Desktop Runtime** (Windows 10/11, 64 Bit). Fehlt sie,
+> bietet Windows den Download beim ersten Start an.
 
 > **Das Master-Passwort ist der einzige Schlüssel.** Bewahre es außerhalb des
-> Rechners auf (Passwortmanager auf dem Handy, Zettel). Ohne es lässt sich das
-> Tool nicht regulär entfernen — das ist so gewollt.
-
-> Voraussetzung: das **.NET 8 Desktop Runtime** (auf diesem Rechner vorhanden).
-> Falls es auf einem anderen PC fehlt, bietet Windows den Download beim ersten
-> Start automatisch an.
+> Rechners auf — oder gib es der Person deines Vertrauens.
 
 ---
 
-## Voreinstellungen
+## Einstellungen
+
+Beim Installieren festgelegt (später nicht mehr änderbar):
 
 | | |
 |---|---|
-| Tagesbudget | **30 Minuten** |
-| Höchstguthaben (Deckel) | **240 Minuten** — 8 Tage Sparen |
-| Warnfenster bei | **10 Minuten** Restzeit |
-| Vorwarnung vor Abmeldung | 90 Sekunden |
-| Puffer nach Anmeldung mit leerem Konto | **120 Sekunden** |
-| Nachlegen per Master-Passwort | höchstens **4 Stunden pro Vorgang** (beliebig oft) |
+| Nachlegen je Vorgang | höchstens 4 Stunden — beliebig oft wiederholbar |
 
-Alles im Master-Fenster änderbar.
+Jederzeit änderbar über die Master-Steuerung (Doppelklick auf das Tray-Symbol,
+Master-Passwort nötig):
+
+| | Voreinstellung |
+|---|---|
+| Tagesbudget | 30 Minuten |
+| Höchstguthaben (Deckel) | 240 Minuten |
+| Warnung bei | 10 Minuten Restzeit |
+| Vorwarnung vor Abmeldung | 90 Sekunden |
+| Puffer nach Anmeldung mit leerem Konto | 120 Sekunden |
+
+Der **Deckel** ist wichtig: Ohne ihn sammelt ein langer Urlaub ein Kontingent an,
+das das ganze System entwertet.
 
 ---
 
@@ -58,130 +97,49 @@ Alles im Master-Fenster änderbar.
 
 | | |
 |---|---|
-| Restzeit sehen | Overlay oben rechts, oder Zeiger über das Tray-Symbol |
-| Anderen Wert sehen | Mauszeiger über das Overlay — dreht auf den jeweils anderen Wert |
-| Hoch- statt runterzählen | Rechtsklick auf das Tray-Symbol → *Angemeldete Zeit hochzählen* |
-| Overlay ein/aus | `Strg` + `Alt` + `Umschalt` + `T`, oder Rechtsklick auf das Tray-Symbol |
-| Hintergrund an/aus | Rechtsklick auf das Tray-Symbol → *Hintergrund ausblenden* (dann bleibt nur die Zahl) |
-| Farbe der Zahl | Rechtsklick auf das Tray-Symbol → *Farbe der Zahl* |
 | Master-Steuerung | Doppelklick auf das Tray-Symbol |
-| Pausieren | Master-Steuerung → Passwort → Dauer → *Pause starten* |
-| Zeit nachlegen | Master-Steuerung → Passwort → Minuten (negativ zieht ab) |
-
-Das Overlay zeigt **keine Sekunden** — es aktualisiert sich alle zwei Sekunden.
-Nur während der Vorwarnung vor der Abmeldung zählt es sekundengenau herunter.
-
-Das Tray-Symbol färbt sich: grün → gelb (unter 15 min) → rot (unter 5 min),
-blau bei Pause, grau wenn der Dienst nicht erreichbar ist.
-
-Das Ausblenden des Overlays und das Beenden des Agent ändern nichts an der
-Durchsetzung — der Agent zeigt nur an, entschieden wird im Dienst.
+| Overlay ein/aus | `Strg` + `Alt` + `Umschalt` + `T` |
+| Anderen Wert sehen | Mauszeiger über das Overlay |
+| Darstellung ändern | Rechtsklick auf das Tray-Symbol |
 
 ---
 
-## Wie das Kontingent rechnet
-
-Bei jedem Tageswechsel:
+## Wie es aufgebaut ist
 
 ```
-Guthaben = min(Guthaben + Tagesbudget, Höchstguthaben)
-```
-
-Bei 30 min/Tag und 240 min Deckel:
-
-| Situation | Guthaben danach |
-|---|---|
-| 10 min übrig, 1 Tag vergangen | 40 min |
-| 10 min übrig, 3 Tage vergangen | 100 min |
-| 10 min übrig, 30 Tage vergangen | 240 min — der Deckel greift |
-
-Verbraucht wird jede angemeldete Minute. Die Uhr steht nur, wenn die Sitzung
-gesperrt ist oder der Bildschirmschoner läuft (beides abschaltbar). Schlaf- und
-Ruhezustand kosten nichts.
-
-### Wenn die Zeit ausgeht
-
-1. Bei **10 Minuten** Restzeit erscheint ein Warnfenster. Es nimmt nie den Fokus.
-2. Bei **0** beginnt die Vorwarnung: 90 Sekunden zum Speichern, danach Abmeldung.
-3. Wer sich **mit bereits leerem Konto anmeldet**, bekommt **120 Sekunden** — das
-   Notfallfenster, um per Master-Passwort Zeit nachzulegen.
-
-Per Master-Passwort lassen sich **pro Vorgang höchstens 4 Stunden** nachlegen —
-beliebig oft. Im Master-Fenster gibt es dafür `+30`- und `−30`-Knöpfe sowie ein
-Feld für andere Werte. Abziehen ist unbegrenzt.
-
----
-
-## Architektur
-
-```
-TimeGuardService.exe   Windows-Dienst als LocalSystem, Autostart.
-                       Zählt, entscheidet, prüft das Passwort, meldet ab,
-                       schützt sich selbst.
-
-        ▲  Named Pipe (\\.\pipe\TimeGuard.v1)
+TimeGuardService.exe   Windows-Dienst (LocalSystem). Zählt, entscheidet,
+                       prüft das Passwort, meldet ab, schützt sich selbst.
+        ▲  Named Pipe
         ▼
-
-TimeGuardAgent.exe     Pro angemeldetem Benutzer. Overlay, Tray, Warnfenster,
-                       Master-Fenster. Hat keinerlei eigene Befugnis.
+TimeGuardAgent.exe     Pro Benutzer: Overlay, Tray, Warnung, Master-Fenster.
+                       Reine Anzeige, ohne eigene Befugnis.
 ```
 
-Das Master-Passwort liegt nur als PBKDF2-SHA256-Hash (600 000 Runden) vor und
-wird **ausschließlich im Dienst** geprüft. Nach fünf Fehlversuchen ist die Prüfung
-60 Sekunden gesperrt. Das Guthaben ist **systemweit**, nicht pro Konto.
+Das Master-Passwort wird nur als PBKDF2-SHA256-Hash gespeichert und
+**ausschließlich im Dienst** geprüft. Das Guthaben gilt systemweit, nicht pro
+Benutzerkonto.
+
+**Ehrlich zur Reichweite:** Ein lokaler Administrator ist unter Windows laut
+Microsofts eigenen Kriterien keine Sicherheitsgrenze — ein Programm ohne
+signierten Kernel-Treiber kann das nicht ändern (auch kommerzielle Tools nicht).
+TimeGuard setzt darum auf viele sich gegenseitig wiederherstellende Sperren: Ein
+Umgehen ist aufwendig und bewusst, statt beiläufig. Genau darum geht es.
 
 ---
 
-## Selbstschutz
-
-Der Dienst richtet bei jedem Start und über eine Watchdog-Aufgabe fortlaufend
-mehrere voneinander unabhängige Riegel wieder auf: Zugriffssperren auf seine
-Daten, seinen Programmordner, seine Registrierung und sich selbst, Start auch im
-abgesicherten Modus, und eine geplante Aufgabe, die ihn bei Bedarf neu aufsetzt.
-Wird ein Riegel gelöst, stellt der Dienst ihn selbsttätig wieder her.
-
-Regulär entfernen oder ändern lässt sich all das nur mit dem Master-Passwort.
-
-### Grenzen — ehrlich
-
-Absolute Unumgehbarkeit gibt es auf Windows für ein Programm ohne signierten
-Kernel-Treiber nicht: Ein lokaler Administrator ist laut Microsofts eigenen
-Sicherheitskriterien **keine Sicherheitsgrenze**. TimeGuard hebt die Hürde auf
-dasselbe Niveau, auf dem auch kommerzielle Zeitkontrollen arbeiten (auch Time Boss
-kommt ohne Kernel-Treiber aus) — viele sich gegenseitig wiederherstellende Riegel,
-sodass ein Umgehen aufwendig und bewusst ist statt beiläufig.
-
-Wirklich außerhalb der Reichweite dieser Software liegt der Zugriff **außerhalb des
-laufenden Windows** (Start von einem anderen Medium, Ausbau des Datenträgers).
-Dagegen hilft nur Geräteverschlüsselung mit einem BIOS-/UEFI-Passwort — eine
-Einstellung des Rechners, nicht des Programms.
-
----
-
-## Wenn etwas klemmt
-
-**Overlay fehlt** — der Agent läuft nicht. Er startet nach der nächsten Anmeldung
-automatisch wieder, oder von Hand:
+## Selbst bauen
 
 ```powershell
-& "C:\Program Files\TimeGuard\TimeGuardAgent.exe"
+git clone https://github.com/fcspcs/TimeGuard.git
+cd TimeGuard
+.\build.ps1     # Ergebnis: dist\TimeGuardSetup.exe
 ```
 
-**Guthaben oder Rest prüfen** — im Master-Fenster (Doppelklick auf das Tray-Symbol).
-
-**Zeit ändern, pausieren, entfernen** — alles über das Master-Fenster bzw.
-`install\Uninstall.ps1`, jeweils mit dem Master-Passwort.
+Braucht das .NET 8 SDK. Die Installer-Datei im Repository wird bei jeder
+Änderung automatisch neu gebaut (GitHub Actions).
 
 ---
 
-## Entwicklung
+## Lizenz
 
-Nur der **Debug-Build** kennt Testschalter (`--data-dir`, `--pipe`, `--dry-run`);
-der ausgelieferte Release-Build enthält sie nicht.
-
-```powershell
-# Dienst gegen einen Testordner, ohne echte Abmeldung (nur Debug-Build)
-$d = "$env:TEMP\tg-test"
-$svc = ".\src\TimeGuard.Service\bin\Debug\net8.0-windows\win-x64\TimeGuardService.exe"
-& $svc --data-dir $d --pipe timeguard.test --dry-run
-```
+MIT — siehe [LICENSE](LICENSE).

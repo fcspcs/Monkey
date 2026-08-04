@@ -27,10 +27,13 @@ internal static class AgentSettings
         set => WriteBool(nameof(CountUp), value);
     }
 
-    /// <summary>Kasten hinter der Zahl anzeigen? Ausgeschaltet bleibt nur die Zahl.</summary>
+    /// <summary>
+    /// Kasten hinter der Zahl anzeigen? Standardmaessig aus - dann steht nur die
+    /// Zahl auf dem Desktop. Wer den Kasten will, schaltet ihn im Tray-Menue ein.
+    /// </summary>
     public static bool OverlayBackground
     {
-        get => ReadBool(nameof(OverlayBackground), true);
+        get => ReadBool(nameof(OverlayBackground), false);
         set => WriteBool(nameof(OverlayBackground), value);
     }
 

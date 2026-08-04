@@ -152,6 +152,9 @@ public partial class OverlayWindow : Window
     {
         ApplyChrome();
 
+        // Das App-Symbol erscheint nur, solange der Zeiger ueber dem Overlay steht.
+        HoverIcon.Visibility = _hovering ? Visibility.Visible : Visibility.Collapsed;
+
         var status = _last;
 
         if (status is null)
@@ -230,6 +233,7 @@ public partial class OverlayWindow : Window
             Panel.Effect = PanelShadow;
             TimeLabel.Effect = null;
             CaptionLabel.Effect = null;
+            HoverIcon.Effect = null;
             CaptionLabel.Visibility = Visibility.Visible;
         }
         else
@@ -242,6 +246,7 @@ public partial class OverlayWindow : Window
             Panel.Effect = null;
             TimeLabel.Effect = TextGlow;
             CaptionLabel.Effect = TextGlow;
+            HoverIcon.Effect = TextGlow;
             CaptionLabel.Visibility = _hovering ? Visibility.Visible : Visibility.Collapsed;
         }
     }

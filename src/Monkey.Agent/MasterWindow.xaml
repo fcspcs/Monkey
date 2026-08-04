@@ -51,17 +51,21 @@
         </Grid.ColumnDefinitions>
 
         <!-- Die Evolutionsstufe als volle Seitenspalte: randlos, ueber die ganze
-             Fensterhoehe, ohne Beschriftung und ohne eigenen Hintergrund. Die
-             Breite wird im Code aus der Hoehe berechnet, damit das Seitenver-
-             haeltnis der Vorlage exakt erhalten bleibt und nichts verzerrt oder
-             beschnitten wird. Nimmt keine Mausklicks an. -->
-        <Image x:Name="Gimmick"
-               Grid.Column="0"
-               Stretch="UniformToFill"
-               VerticalAlignment="Stretch"
-               HorizontalAlignment="Left"
-               IsHitTestVisible="False"
-               RenderOptions.BitmapScalingMode="HighQuality"/>
+             Fensterhoehe, ohne Beschriftung. Die Breite wird im Code aus der Hoehe
+             berechnet, damit das Seitenverhaeltnis der Vorlage exakt erhalten
+             bleibt und nichts verzerrt oder beschnitten wird. Der schwarze Grund
+             fuellt alles, was durch Rundung daneben frei bleibt, und geht nahtlos
+             in den dunklen Bildhintergrund ueber. Nimmt keine Mausklicks an. -->
+        <Border x:Name="GimmickBackdrop"
+                Grid.Column="0"
+                Background="Black"
+                IsHitTestVisible="False">
+            <Image x:Name="Gimmick"
+                   Stretch="UniformToFill"
+                   VerticalAlignment="Stretch"
+                   HorizontalAlignment="Center"
+                   RenderOptions.BitmapScalingMode="HighQuality"/>
+        </Border>
 
     <ScrollViewer Grid.Column="1"
                   VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"

@@ -56,8 +56,8 @@ public partial class MasterWindow : Window
         Loaded += async (_, _) => { UpdateGimmick(); await RefreshAsync(); };
     }
 
-    /// <summary>Seitenverhaeltnis der Evolutionsbilder (158 x 819).</summary>
-    private const double GimmickAspect = 158.0 / 819.0;
+    /// <summary>Seitenverhaeltnis der Evolutionsbilder (220 x 1140).</summary>
+    private const double GimmickAspect = 220.0 / 1140.0;
 
     private int _gimmickStage;
 
@@ -71,7 +71,7 @@ public partial class MasterWindow : Window
         const double needed = 560;
         var show = ActualWidth >= needed;
 
-        Gimmick.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        GimmickBackdrop.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
 
         if (!show)
         {
@@ -82,8 +82,9 @@ public partial class MasterWindow : Window
         var height = RootGrid.ActualHeight;
         if (height <= 0) return;
 
-        Gimmick.Width = Math.Round(height * GimmickAspect);
-        GimmickColumn.Width = GridLength.Auto;
+        // Spaltenbreite exakt aus der Hoehe: so fuellt das Bild die Flaeche ohne
+        // Verzerrung und ohne Beschnitt.
+        GimmickColumn.Width = new GridLength(Math.Round(height * GimmickAspect));
     }
 
     /// <summary>
@@ -97,8 +98,19 @@ public partial class MasterWindow : Window
         if (stage == _gimmickStage) return;
 
         _gimmickStage = stage;
-        Gimmick.Source = new BitmapImage(
-            new Uri($"pack://application:,,,/Assets/Evolution/stage{stage}.png", UriKind.Absolute));
+
+        // Kleingeschrieben, weil die Ressourcennamen so abgelegt werden. Schlaegt
+        // das Laden fehl, bleibt einfach das bisherige Bild stehen - eine fehlende
+        // Zierde darf das Fenster nicht stoeren.
+        try
+        {
+            Gimmick.Source = new BitmapImage(
+                new Uri($"pack://application:,,,/assets/evolution/stage{stage}.png", UriKind.Absolute));
+        }
+        catch (Exception)
+        {
+            _gimmickStage = 0;
+        }
     }
 
     /// <summary>

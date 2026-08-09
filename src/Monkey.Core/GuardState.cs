@@ -93,19 +93,20 @@ public sealed class GuardState
     public const int EvolutionStages = 5;
 
     /// <summary>
-    /// Stufe aus dem Ersparten. Die letzte Stufe verlangt vier Fuenftel des
-    /// Deckels - sie soll ausdruecklich schwer zu erreichen sein.
+    /// Stufe aus dem Ersparten, gemessen am Tagesbudget: eine Tagesgutschrift ist
+    /// der kleine Affe, zwei angesparte Tagesbudgets die zweite Stufe und so
+    /// weiter bis Stufe 5 ab dem Fuenffachen. Der Deckel spielt hier keine Rolle -
+    /// er begrenzt nur, wie weit sich ueberhaupt ansparen laesst.
     /// </summary>
     [JsonIgnore]
     public int EvolutionStage
     {
         get
         {
-            var cap = Config.CapMinutes * 60.0;
-            if (cap <= 0) return 1;
+            var daily = Config.DailyGrantMinutes * 60.0;
+            if (daily <= 0) return 1;
 
-            var ratio = Math.Clamp(EarnedSeconds / cap, 0, 1);
-            var stage = 1 + (int)(ratio * EvolutionStages);
+            var stage = (int)(EarnedSeconds / daily);
             return Math.Clamp(stage, 1, EvolutionStages);
         }
     }

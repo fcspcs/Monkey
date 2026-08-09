@@ -112,6 +112,12 @@ master password):
 The **cap** matters more than it looks. Without it, one long holiday leaves you
 with a balance so fat the whole thing stops meaning anything.
 
+The grace periods can't be milked: with an empty balance you get the full
+grace **three times in a row** — signing in again and again (or locking and
+unlocking) doesn't stack up free minutes. From the fourth time on there are
+only 10 seconds before sign-out, until the balance is topped up again (daily
+allowance or master password), which resets the count.
+
 ---
 
 ## Controls

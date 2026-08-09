@@ -111,6 +111,15 @@ public sealed class GuardState
     /// <summary>Zaehler fuer erkannte Systemzeit-Manipulationen.</summary>
     public int ClockTamperEvents { get; set; }
 
+    /// <summary>
+    /// Wie oft in Folge bei leerem Konto eine Schonfrist gewaehrt wurde - egal ob
+    /// nach einer Anmeldung (Notfallfenster) oder mitten in der Sitzung. Haelt
+    /// das Fenster davon ab, als Gratis-Kontingent gemolken zu werden: staendig
+    /// neu anmelden oder sperren/entsperren bringt ab dem vierten Mal nur noch
+    /// Sekunden. Sobald wieder Guthaben da ist, faellt der Zaehler auf null.
+    /// </summary>
+    public int EmptyGraceRuns { get; set; }
+
     public DateTimeOffset LastSaved { get; set; }
 
     public TelegramSettings Telegram { get; set; } = new();

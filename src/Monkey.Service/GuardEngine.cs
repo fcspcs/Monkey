@@ -14,6 +14,15 @@ public sealed record TelegramConfigView(bool Enabled, string? WorkerUrl, string?
 internal sealed class GuardEngine
 {
     private const int MaxFailedAttempts = 5;
+
+    /// <summary>
+    /// So viele Schonfristen in Folge gibt es bei leerem Konto in voller Laenge.
+    /// Danach greift die Kurzfrist - genug, um die Abmeldung kommen zu sehen,
+    /// zu knapp, um damit zu arbeiten.
+    /// </summary>
+    private const int MaxEmptyGraceRuns = 3;
+    private const int ShortEmergencyGraceSeconds = 10;
+
     private static readonly TimeSpan LockoutDuration = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan SaveInterval = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan AgentTimeout = TimeSpan.FromSeconds(20);
@@ -118,6 +127,10 @@ internal sealed class GuardEngine
             }
 
             ClampEarned();
+
+            // Wieder Guthaben da (Tagesgutschrift oder Nachlegen): die Zaehlung
+            // der Leerlauf-Schonfristen beginnt von vorn.
+            if (_state.BalanceSeconds > 0) _state.EmptyGraceRuns = 0;
 
             Enforce(paused, counting, freshLogin);
 
@@ -247,14 +260,27 @@ internal sealed class GuardEngine
             ResetGrace();
             _zeroSince = _clock.Now;
 
+            // Jede gewaehrte Schonfrist bei leerem Konto zaehlt - sofort
+            // gespeichert, damit auch ein harter Neustart sie nicht vergisst.
+            _state.EmptyGraceRuns++;
+            _store.Save(_state);
+            _lastSave = _clock.Now;
+
             // Wer sich mit leerem Konto gerade erst angemeldet hat, bekommt die
             // laengere Frist - das ist das Notfallfenster fuer das Master-Passwort.
-            _activeGrace = TimeSpan.FromSeconds(freshLogin
-                ? _state.Config.LoginGraceSeconds
+            // Aber nur ein paar Mal in Folge: sonst wird aus dem Notfallfenster per
+            // Dauer-Anmelden (oder Sperren und Entsperren) ein Gratis-Kontingent.
+            var exhausted = _state.EmptyGraceRuns > MaxEmptyGraceRuns;
+
+            _activeGrace = TimeSpan.FromSeconds(
+                exhausted ? ShortEmergencyGraceSeconds
+                : freshLogin ? _state.Config.LoginGraceSeconds
                 : _state.Config.GraceSeconds);
 
-            Log.Write($"Balance empty. Signing out in {_activeGrace.TotalSeconds:0} s" +
-                      $"{(freshLogin ? " (signed in with an empty balance)" : string.Empty)}.");
+            Log.Write($"Balance empty. Signing out in {_activeGrace.TotalSeconds:0} s " +
+                      $"(grace {_state.EmptyGraceRuns} in a row" +
+                      $"{(freshLogin ? ", fresh sign-in" : string.Empty)}" +
+                      $"{(exhausted ? " - emergency window used up" : string.Empty)}).");
         }
 
         _previousRemainingMinutes = double.MaxValue;

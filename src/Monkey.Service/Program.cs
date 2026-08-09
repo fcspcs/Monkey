@@ -30,8 +30,10 @@ var builder = Host.CreateApplicationBuilder(args);
 
 builder.Services.AddWindowsService(options => options.ServiceName = Paths.ServiceName);
 builder.Services.AddSingleton<GuardEngine>();
+builder.Services.AddSingleton<TelegramSync>();
 builder.Services.AddHostedService<GuardWorker>();
 builder.Services.AddHostedService<PipeServer>();
+builder.Services.AddHostedService(provider => provider.GetRequiredService<TelegramSync>());
 
 try
 {

@@ -48,6 +48,26 @@ public sealed class GuardConfig
     public GuardConfig Clone() => (GuardConfig)MemberwiseClone();
 }
 
+/// <summary>
+/// Einstellungen der optionalen Telegram-Anbindung. Die Bot-Tokens stehen bewusst
+/// nicht hier: sie liegen ausschliesslich beim Worker des Nutzers. Auf dem PC bleibt
+/// nur, was der Dienst zum Abgleich braucht.
+/// </summary>
+public sealed class TelegramSettings
+{
+    public bool Enabled { get; set; }
+
+    /// <summary>Basis-URL des eigenen Cloudflare Workers (https://...).</summary>
+    public string? WorkerUrl { get; set; }
+
+    /// <summary>
+    /// Sync-Secret fuer die Verbindung zum Worker, DPAPI-verschluesselt (Base64).
+    /// Nur das Dienstkonto kann es entschluesseln - Administratoren, die die
+    /// Zustandsdatei lesen duerfen, sehen hier nur Chiffrat.
+    /// </summary>
+    public string? SyncSecretProtected { get; set; }
+}
+
 public sealed class GuardState
 {
     public int Version { get; set; } = 1;
@@ -85,6 +105,15 @@ public sealed class GuardState
     public int ClockTamperEvents { get; set; }
 
     public DateTimeOffset LastSaved { get; set; }
+
+    public TelegramSettings Telegram { get; set; } = new();
+
+    /// <summary>
+    /// Bereits ausgefuehrte Fernbefehle (Telegram). Schuetzt vor doppelter
+    /// Ausfuehrung, wenn eine Bestaetigung den Worker nicht erreicht hat und er
+    /// denselben Befehl noch einmal zustellt.
+    /// </summary>
+    public List<string> AppliedRemoteCommandIds { get; set; } = new();
 
     [JsonIgnore]
     public bool HasPassword => !string.IsNullOrEmpty(PasswordHash);

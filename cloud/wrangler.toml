@@ -1,0 +1,13 @@
+# Nur fuer alle, die lieber die Wrangler-CLI nutzen als das Dashboard:
+#   npx wrangler kv namespace create KV     (ID unten eintragen)
+#   npx wrangler secret put SYNC_SECRET     (Wert aus Monkeys Telegram-Tab)
+#   npx wrangler deploy
+# Im Dashboard geht es genauso ohne diese Datei - siehe README.
+
+name = "monkey-telegram"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"

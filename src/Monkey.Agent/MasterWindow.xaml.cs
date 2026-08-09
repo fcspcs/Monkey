@@ -175,6 +175,21 @@ public partial class MasterWindow : Window
             PauseOnScreensaver.IsChecked = config.PauseOnScreensaver;
         }
 
+        if (status.TelegramEnabled)
+        {
+            var text = $"Connected — worker: {status.TelegramWorkerHost}.";
+            text += status.TelegramLastSyncSecondsAgo is { } ago
+                ? $" Last sync {FormatAgo(ago)} ago."
+                : " No successful sync yet.";
+            if (!string.IsNullOrEmpty(status.TelegramLastError))
+                text += $" Last error: {status.TelegramLastError}";
+            TelegramStatusText.Text = text;
+        }
+        else
+        {
+            TelegramStatusText.Text = "Not connected.";
+        }
+
         if (!status.PasswordConfigured)
             Show(false, "No master password is stored. Please reinstall with MonkeySetup.exe.");
     }
@@ -293,6 +308,86 @@ public partial class MasterWindow : Window
         });
     }
 
+    // ------------------------------------------------------------- Telegram
+
+    /// <summary>
+    /// Das Sync-Secret entsteht hier im Fenster, damit es vor dem Verbinden nach
+    /// Cloudflare kopiert werden kann. Base64url, 256 Bit.
+    /// </summary>
+    private void OnGenerateSyncSecret(object sender, RoutedEventArgs e)
+    {
+        var bytes = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
+        SyncSecretBox.Text = Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        Show(true, "Sync secret generated. Store this value in your Cloudflare worker as the SYNC_SECRET secret, then connect.");
+    }
+
+    private async void OnTelegramConnect(object sender, RoutedEventArgs e)
+    {
+        var url = WorkerUrlBox.Text?.Trim();
+        if (string.IsNullOrEmpty(url) ||
+            !Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
+        {
+            Show(false, "Please enter the worker address as an https:// URL.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(SyncSecretBox.Text))
+        {
+            Show(false, "Please generate a sync secret first and store it in Cloudflare as SYNC_SECRET.");
+            return;
+        }
+
+        if (MonkeyTokenBox.Password.Length == 0 || FriendTokenBox.Password.Length == 0)
+        {
+            Show(false, "Please enter both bot tokens (from @BotFather).");
+            return;
+        }
+
+        var ok = await SendAsync(new Request
+        {
+            Type = RequestType.TelegramSetup,
+            Password = MasterPassword.Password,
+            WorkerUrl = url,
+            SyncSecret = SyncSecretBox.Text.Trim(),
+            MonkeyToken = MonkeyTokenBox.Password.Trim(),
+            FriendToken = FriendTokenBox.Password.Trim(),
+        });
+
+        // Die Tokens haben ihr Ziel erreicht (oder der Versuch ist gescheitert) -
+        // in beiden Faellen muessen sie nicht im Fenster stehen bleiben.
+        if (ok)
+        {
+            MonkeyTokenBox.Clear();
+            FriendTokenBox.Clear();
+        }
+    }
+
+    private async void OnPairMonkey(object sender, RoutedEventArgs e) =>
+        await SendAsync(new Request
+        {
+            Type = RequestType.TelegramPair,
+            Password = MasterPassword.Password,
+            PairRole = "monkey",
+        });
+
+    private async void OnPairFriend(object sender, RoutedEventArgs e) =>
+        await SendAsync(new Request
+        {
+            Type = RequestType.TelegramPair,
+            Password = MasterPassword.Password,
+            PairRole = "friend",
+        });
+
+    private async void OnTelegramOff(object sender, RoutedEventArgs e) =>
+        await SendAsync(new Request
+        {
+            Type = RequestType.TelegramOff,
+            Password = MasterPassword.Password,
+        });
+
+    private static string FormatAgo(double seconds) =>
+        seconds < 90 ? $"{(int)seconds} s" : $"{(int)(seconds / 60)} min";
+
     private async Task<bool> SendAsync(Request request)
     {
         request.SessionId = _sessionId;
@@ -325,6 +420,10 @@ public partial class MasterWindow : Window
         Minus30Button.IsEnabled = !busy;
         SaveConfigButton.IsEnabled = !busy;
         ChangePasswordButton.IsEnabled = !busy;
+        ConnectTelegramButton.IsEnabled = !busy;
+        PairMonkeyButton.IsEnabled = !busy;
+        PairFriendButton.IsEnabled = !busy;
+        TelegramOffButton.IsEnabled = !busy;
         Cursor = busy ? System.Windows.Input.Cursors.Wait : null;
     }
 

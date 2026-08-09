@@ -1,6 +1,10 @@
+using System.Globalization;
 using Monkey.Core;
 
 namespace Monkey.Service;
+
+/// <summary>Lesekopie der Telegram-Einstellungen fuer den Sync-Dienst.</summary>
+public sealed record TelegramConfigView(bool Enabled, string? WorkerUrl, string? SyncSecretProtected);
 
 /// <summary>
 /// Die gesamte Entscheidungslogik. Der Agent zeigt nur an und fragt an - hier faellt
@@ -47,6 +51,16 @@ internal sealed class GuardEngine
 
     private int _failedAttempts;
     private DateTimeOffset _lockoutUntil = DateTimeOffset.MinValue;
+
+    private DateTimeOffset? _lastTelegramSync;
+    private string? _telegramError;
+
+    /// <summary>
+    /// Weckt den Telegram-Abgleich, sobald sich am Konto etwas geaendert hat -
+    /// dann steht der neue Stand binnen Sekunden beim Worker statt erst im
+    /// naechsten Takt.
+    /// </summary>
+    public SemaphoreSlim TelegramKick { get; } = new(0, 1);
 
     private readonly record struct AgentReport(DateTimeOffset LastSeen, bool ScreensaverRunning);
 
@@ -144,6 +158,7 @@ internal sealed class GuardEngine
 
         _state.LastAccrualDate = today;
         Log.Write($"New day: {days} day(s) credited, balance {Format(_state.BalanceSeconds)}.");
+        KickTelegram();
     }
 
     private void Grant()
@@ -341,6 +356,7 @@ internal sealed class GuardEngine
                     {
                         _state.PauseUntil = null;
                         _store.Save(_state);
+                        KickTelegram();
                         Log.Write("Pause ended early.");
                         return Response.Success("The limit is active again.", BuildStatus(request.SessionId));
                     });
@@ -377,6 +393,7 @@ internal sealed class GuardEngine
             _state.PauseUntil = _clock.Now.AddMinutes(minutes);
             ResetGrace();
             _store.Save(_state);
+            KickTelegram();
             Log.Write($"Paused for {minutes} min until {_state.PauseUntil:HH:mm}.");
             return Response.Success($"Paused until {_state.PauseUntil:HH:mm}.",
                 BuildStatus(request.SessionId));
@@ -410,6 +427,7 @@ internal sealed class GuardEngine
             ResetGrace();
             _previousRemainingMinutes = double.MaxValue;
             _store.Save(_state);
+            KickTelegram();
 
             Log.Write($"Balance changed manually by {request.Minutes:+#;-#;0} min, now {Format(_state.BalanceSeconds)}" +
                       $"{(request.Minutes > 0 ? " - evolution reset to stage 1" : string.Empty)}.");
@@ -438,6 +456,7 @@ internal sealed class GuardEngine
             // Installieren festgelegt und laesst sich hier nicht aendern.
 
             _store.Save(_state);
+            KickTelegram();
             Log.Write($"Settings changed: {config.DailyGrantMinutes} min/day, cap {config.CapMinutes} min, " +
                       $"warning at {config.WarnMinutes} min.");
             return Response.Success("Settings saved.", BuildStatus(request.SessionId));
@@ -459,6 +478,193 @@ internal sealed class GuardEngine
             Log.Write("Master password changed.");
             return Response.Success("Master password changed.", BuildStatus(request.SessionId));
         });
+    }
+
+    // ------------------------------------------------------------- Telegram
+
+    /// <summary>
+    /// Passwortpruefung fuer Anfragen, die ausserhalb der Engine weiterlaufen
+    /// (Telegram-Einrichtung). Dieselbe Drossel wie ueberall sonst.
+    /// </summary>
+    public Response Authorize(string? password)
+    {
+        lock (_gate) return WithPassword(password, () => Response.Success());
+    }
+
+    public TelegramConfigView TelegramConfig()
+    {
+        lock (_gate)
+            return new TelegramConfigView(
+                _state.Telegram.Enabled, _state.Telegram.WorkerUrl, _state.Telegram.SyncSecretProtected);
+    }
+
+    public void SetTelegram(bool enabled, string? workerUrl, string? syncSecretProtected)
+    {
+        lock (_gate)
+        {
+            _state.Telegram.Enabled = enabled;
+            _state.Telegram.WorkerUrl = workerUrl;
+            _state.Telegram.SyncSecretProtected = syncSecretProtected;
+
+            if (!enabled)
+            {
+                _lastTelegramSync = null;
+                _telegramError = null;
+            }
+
+            _store.Save(_state);
+            _lastSave = _clock.Now;
+
+            Log.Write(enabled && workerUrl is not null
+                ? $"Telegram link enabled (worker {new Uri(workerUrl).Host})."
+                : "Telegram link disabled.");
+
+            if (enabled) KickTelegram();
+        }
+    }
+
+    public void ReportTelegramSync(bool ok, string? error)
+    {
+        lock (_gate)
+        {
+            if (ok)
+            {
+                _lastTelegramSync = _clock.Now;
+                _telegramError = null;
+            }
+            else
+            {
+                _telegramError = error;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Momentaufnahme fuer den Worker. Enthaelt neben dem Stand alles, was er
+    /// braucht, um bei ausgeschaltetem PC selbst weiterzurechnen: Tagesbudget,
+    /// Deckel, letzter Gutschriftstag und Zeitzone.
+    /// </summary>
+    public TelegramSnapshot BuildTelegramSnapshot()
+    {
+        lock (_gate)
+        {
+            var paused = _state.PauseUntil is { } until && _clock.Now < until;
+
+            return new TelegramSnapshot
+            {
+                BalanceSeconds = Math.Max(0, _state.BalanceSeconds),
+                EarnedSeconds = Math.Max(0, _state.EarnedSeconds),
+                DailyGrantMinutes = _state.Config.DailyGrantMinutes,
+                CapMinutes = _state.Config.CapMinutes,
+                MaxManualGrantMinutes = _state.Config.MaxManualGrantMinutes,
+                MaxPauseMinutes = _state.Config.MaxPauseMinutes,
+                EvolutionStage = _state.EvolutionStage,
+                Counting = !paused && CountingSessions(Native.EnumerateSessions()).Count > 0,
+                PauseRemainingSeconds = paused ? (_state.PauseUntil!.Value - _clock.Now).TotalSeconds : 0,
+                LastAccrualDate = _state.LastAccrualDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                TzOffsetMinutes = (int)DateTimeOffset.Now.Offset.TotalMinutes,
+                SavedAtUtcMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            };
+        }
+    }
+
+    /// <summary>
+    /// Fernbefehle des Freundes anwenden. Bewusst enger als die Pipe: nur
+    /// nachlegen, pausieren, fortsetzen - keine Einstellungen, kein Passwort,
+    /// kein Teardown. Jeder Befehl wird genau einmal ausgefuehrt, auch wenn der
+    /// Worker ihn nach einer verlorenen Quittung erneut zustellt.
+    /// </summary>
+    public List<RemoteResult> ApplyRemoteCommands(IReadOnlyList<RemoteCommand> commands)
+    {
+        var results = new List<RemoteResult>();
+        if (commands.Count == 0) return results;
+
+        lock (_gate)
+        {
+            var changed = false;
+
+            foreach (var command in commands)
+            {
+                if (string.IsNullOrWhiteSpace(command.Id) || command.Id.Length > 64) continue;
+
+                if (_state.AppliedRemoteCommandIds.Contains(command.Id))
+                {
+                    results.Add(new RemoteResult(command.Id, true, "Already done."));
+                    continue;
+                }
+
+                var (ok, message) = ApplyRemote(command);
+                results.Add(new RemoteResult(command.Id, ok, message));
+
+                _state.AppliedRemoteCommandIds.Add(command.Id);
+                while (_state.AppliedRemoteCommandIds.Count > 64)
+                    _state.AppliedRemoteCommandIds.RemoveAt(0);
+                changed = true;
+            }
+
+            if (changed)
+            {
+                _store.Save(_state);
+                _lastSave = _clock.Now;
+            }
+        }
+
+        return results;
+    }
+
+    private (bool Ok, string Message) ApplyRemote(RemoteCommand command)
+    {
+        switch (command.Type)
+        {
+            case "add":
+            {
+                var minutes = command.Minutes;
+                if (minutes < 1)
+                    return (false, "The number of minutes must be positive.");
+                if (minutes > _state.Config.MaxManualGrantMinutes)
+                    return (false, $"At most {FormatMinutes(_state.Config.MaxManualGrantMinutes)} can be added per go.");
+
+                _state.BalanceSeconds += minutes * 60.0;
+
+                // Wie beim Nachlegen per Passwort: dazugegeben ist nicht gespart.
+                _state.EarnedSeconds = 0;
+                ClampEarned();
+                ResetGrace();
+                _previousRemainingMinutes = double.MaxValue;
+
+                Log.Write($"Telegram: {minutes} min added remotely, balance now {Format(_state.BalanceSeconds)}.");
+                return (true, $"Added {minutes} min. The balance is now {Format(_state.BalanceSeconds)}.");
+            }
+
+            case "pause":
+            {
+                var minutes = Math.Clamp(command.Minutes, 1, _state.Config.MaxPauseMinutes);
+                _state.PauseUntil = _clock.Now.AddMinutes(minutes);
+                ResetGrace();
+
+                Log.Write($"Telegram: paused remotely for {minutes} min.");
+                return (true, $"Paused for {minutes} min.");
+            }
+
+            case "resume":
+                _state.PauseUntil = null;
+                Log.Write("Telegram: pause ended remotely.");
+                return (true, "The limit is active again.");
+
+            default:
+                return (false, "Unknown command.");
+        }
+    }
+
+    /// <summary>
+    /// Weckt den Telegram-Abgleich, ohne zu blockieren. Ausserhalb der Anbindung
+    /// ein No-op - der Abgleich prueft selbst, ob er eingerichtet ist.
+    /// </summary>
+    private void KickTelegram()
+    {
+        if (!_state.Telegram.Enabled || TelegramKick.CurrentCount > 0) return;
+        try { TelegramKick.Release(); }
+        catch (SemaphoreFullException) { /* Weckruf steht schon an. */ }
     }
 
     /// <summary>
@@ -525,6 +731,12 @@ internal sealed class GuardEngine
             ClockTamperEvents = _state.ClockTamperEvents,
             PasswordConfigured = _state.HasPassword,
             Config = _state.Config.Clone(),
+            TelegramEnabled = _state.Telegram.Enabled,
+            TelegramWorkerHost = _state.Telegram.WorkerUrl is { } workerUrl
+                && Uri.TryCreate(workerUrl, UriKind.Absolute, out var workerUri) ? workerUri.Host : null,
+            TelegramLastSyncSecondsAgo = _lastTelegramSync is { } sync
+                ? Math.Max(0, (_clock.Now - sync).TotalSeconds) : null,
+            TelegramLastError = _telegramError,
         };
     }
 

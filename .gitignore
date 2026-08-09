@@ -9,6 +9,10 @@ src/Monkey.Setup/payload/
 dist/*
 !dist/MonkeySetup.exe
 
+# Privater Signierschluessel fuer Auto-Updates (tools/new-update-key.ps1) -
+# gehoert als Secret UPDATE_SIGNING_KEY zu GitHub Actions, niemals ins Repo.
+update-key.private.pem
+
 # .NET / Rider / VS
 *.user
 .vs/

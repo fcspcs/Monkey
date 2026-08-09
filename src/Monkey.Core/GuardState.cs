@@ -44,8 +44,35 @@ public sealed class GuardConfig
     /// <summary>Laengste am Stueck erlaubte Master-Pause.</summary>
     public int MaxPauseMinutes { get; set; } = 480;
 
+    /// <summary>
+    /// Neue Releases selbststaendig installieren. Braucht kein Passwort, denn es
+    /// kann nur in eine Richtung: eine neuere, vom Projektschluessel signierte
+    /// Version einspielen - Guthaben und Passwort bleiben dabei unberuehrt.
+    /// </summary>
+    public bool AutoUpdate { get; set; } = true;
+
     // Alle Felder sind Werttypen - eine flache Kopie genuegt.
     public GuardConfig Clone() => (GuardConfig)MemberwiseClone();
+}
+
+/// <summary>
+/// Einstellungen der optionalen Telegram-Anbindung. Die Bot-Tokens stehen bewusst
+/// nicht hier: sie liegen ausschliesslich beim Worker des Nutzers. Auf dem PC bleibt
+/// nur, was der Dienst zum Abgleich braucht.
+/// </summary>
+public sealed class TelegramSettings
+{
+    public bool Enabled { get; set; }
+
+    /// <summary>Basis-URL des eigenen Cloudflare Workers (https://...).</summary>
+    public string? WorkerUrl { get; set; }
+
+    /// <summary>
+    /// Sync-Secret fuer die Verbindung zum Worker, DPAPI-verschluesselt (Base64).
+    /// Nur das Dienstkonto kann es entschluesseln - Administratoren, die die
+    /// Zustandsdatei lesen duerfen, sehen hier nur Chiffrat.
+    /// </summary>
+    public string? SyncSecretProtected { get; set; }
 }
 
 public sealed class GuardState
@@ -84,7 +111,25 @@ public sealed class GuardState
     /// <summary>Zaehler fuer erkannte Systemzeit-Manipulationen.</summary>
     public int ClockTamperEvents { get; set; }
 
+    /// <summary>
+    /// Wie oft in Folge bei leerem Konto eine Schonfrist gewaehrt wurde - egal ob
+    /// nach einer Anmeldung (Notfallfenster) oder mitten in der Sitzung. Haelt
+    /// das Fenster davon ab, als Gratis-Kontingent gemolken zu werden: staendig
+    /// neu anmelden oder sperren/entsperren bringt ab dem vierten Mal nur noch
+    /// Sekunden. Sobald wieder Guthaben da ist, faellt der Zaehler auf null.
+    /// </summary>
+    public int EmptyGraceRuns { get; set; }
+
     public DateTimeOffset LastSaved { get; set; }
+
+    public TelegramSettings Telegram { get; set; } = new();
+
+    /// <summary>
+    /// Bereits ausgefuehrte Fernbefehle (Telegram). Schuetzt vor doppelter
+    /// Ausfuehrung, wenn eine Bestaetigung den Worker nicht erreicht hat und er
+    /// denselben Befehl noch einmal zustellt.
+    /// </summary>
+    public List<string> AppliedRemoteCommandIds { get; set; } = new();
 
     [JsonIgnore]
     public bool HasPassword => !string.IsNullOrEmpty(PasswordHash);

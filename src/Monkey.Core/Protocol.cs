@@ -14,6 +14,12 @@ public static class RequestType
 
     /// <summary>Autorisierter Abbau aller Sperren, damit sich das Tool entfernen laesst.</summary>
     public const string Unlock = "unlock";
+
+    // Optionale Telegram-Anbindung. Die Anfragen laufen wie alles andere ueber die
+    // Pipe und verlangen das Master-Passwort - geprueft wird im Dienst.
+    public const string TelegramSetup = "telegramsetup";
+    public const string TelegramPair = "telegrampair";
+    public const string TelegramOff = "telegramoff";
 }
 
 public sealed class Request
@@ -30,7 +36,20 @@ public sealed class Request
     public int SessionId { get; set; }
     public bool ScreensaverRunning { get; set; }
 
+    /// <summary>Bildschirm ist aus (moderner Ersatz des Bildschirmschoners).</summary>
+    public bool DisplayOff { get; set; }
+
     public GuardConfig? Config { get; set; }
+
+    // Telegram-Einrichtung. Die Bot-Tokens laufen hier nur einmal durch: der Dienst
+    // reicht sie an den Worker weiter und behaelt sie selbst nicht.
+    public string? WorkerUrl { get; set; }
+    public string? SyncSecret { get; set; }
+    public string? MonkeyToken { get; set; }
+    public string? FriendToken { get; set; }
+
+    /// <summary>Fuer welchen Bot ein Pairing-Code erzeugt wird: "monkey" oder "friend".</summary>
+    public string? PairRole { get; set; }
 
     public string ToJson() => JsonSerializer.Serialize(this, GuardState.JsonOptions);
     public static Request? FromJson(string json) => JsonSerializer.Deserialize<Request>(json, GuardState.JsonOptions);
@@ -72,6 +91,18 @@ public sealed class StatusDto
     public int ClockTamperEvents { get; set; }
     public bool PasswordConfigured { get; set; }
     public GuardConfig? Config { get; set; }
+
+    /// <summary>
+    /// Version des laufenden Dienstes. Der Agent vergleicht sie mit seiner
+    /// eigenen und startet sich nach einem Update selbst neu.
+    /// </summary>
+    public string? ServiceVersion { get; set; }
+
+    // Zustand der optionalen Telegram-Anbindung, nur fuer die Anzeige.
+    public bool TelegramEnabled { get; set; }
+    public string? TelegramWorkerHost { get; set; }
+    public double? TelegramLastSyncSecondsAgo { get; set; }
+    public string? TelegramLastError { get; set; }
 }
 
 public sealed class Response

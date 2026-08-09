@@ -119,6 +119,102 @@ internal static class SetupEngine
         report("Done.");
     }
 
+    // ------------------------------------------------------------- Aktualisieren
+
+    /// <summary>
+    /// Stiller Update-Modus: nur die Programmdateien tauschen, sonst nichts.
+    /// Wird vom Dienst gestartet, nachdem der Signatur- und Hash-Check des neuen
+    /// Installers bestanden ist. Zustand, Passwort und Einstellungen bleiben
+    /// unangetastet; der Dienst richtet seine Sperren beim Neustart selbst
+    /// wieder auf.
+    /// </summary>
+    public static bool UpdateInPlace(out string error)
+    {
+        error = string.Empty;
+
+        try
+        {
+            if (!HasPayload())
+            {
+                error = "installer payload missing";
+                return false;
+            }
+
+            TryLog("Update: swapping program files …");
+
+            // Watchdog schlafen legen, damit er den Dienst nicht mitten im
+            // Tausch neu startet und die Dateien wieder sperrt.
+            SchTasks("/Change", "/TN", "Monkey Watchdog", "/DISABLE");
+            try
+            {
+                Sc("stop", ServiceName);
+                WaitForExit("MonkeyService", TimeSpan.FromSeconds(30));
+
+                // Laufende Programme lassen sich nicht ueberschreiben, wohl aber
+                // umbenennen: Alte Dateien zur Seite, neue an ihren Platz. Ein
+                // noch laufender Agent arbeitet von der beiseite gelegten Datei
+                // weiter und startet sich selbst neu, sobald er die neue
+                // Dienstversion sieht. Die Reste raeumt der Dienst beim
+                // naechsten Start weg.
+                Directory.CreateDirectory(TargetDir);
+                foreach (var name in PayloadFiles)
+                    MoveAside(Path.Combine(TargetDir, name));
+
+                ExtractPayload(TargetDir);
+
+                Sc("start", ServiceName);
+            }
+            finally
+            {
+                SchTasks("/Change", "/TN", "Monkey Watchdog", "/ENABLE");
+            }
+
+            TryLog("Update: done, service restarted.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return false;
+        }
+    }
+
+    private static void WaitForExit(string processName, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline && Process.GetProcessesByName(processName).Length > 0)
+            Thread.Sleep(500);
+    }
+
+    private static void MoveAside(string path)
+    {
+        if (!File.Exists(path)) return;
+
+        // Eindeutiger Name, damit auch eine noch gesperrte Beiseite-Datei vom
+        // vorletzten Update nicht im Weg steht.
+        var aside = $"{path}.{Path.GetRandomFileName()}.old";
+        try { File.Move(path, aside); }
+        catch
+        {
+            try { File.Delete(path); }
+            catch { /* dann scheitert gleich das Schreiben - mit klarer Meldung */ }
+        }
+    }
+
+    /// <summary>
+    /// Der stille Modus hat kein Fenster - was passiert, landet im Dienstlog.
+    /// </summary>
+    public static void TryLog(string message)
+    {
+        try
+        {
+            Directory.CreateDirectory(Paths.DataDir);
+            File.AppendAllText(Paths.LogFile,
+                $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss} [setup] {message}{Environment.NewLine}");
+        }
+        catch { /* Log ist Kuer */ }
+    }
+
     // ------------------------------------------------------------------- Entfernen
 
     /// <summary>

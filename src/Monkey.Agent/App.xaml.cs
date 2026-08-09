@@ -63,6 +63,14 @@ public partial class App : Application
         var pipeOverride = ArgumentValue(e.Args, "--pipe");
         if (pipeOverride is not null) Paths.UseTestLocation(null, pipeOverride);
 
+        // Nach einem Selbst-Update: erst warten, bis der alte Agent weg ist,
+        // sonst scheitert diese Instanz gleich am Einzelinstanz-Mutex.
+        if (ArgumentValue(e.Args, "--restart") is { } oldPid && int.TryParse(oldPid, out var pid))
+        {
+            try { Process.GetProcessById(pid).WaitForExit(15000); }
+            catch { /* schon weg */ }
+        }
+
         _singleInstance = new Mutex(true, Paths.MutexName + (pipeOverride ?? string.Empty), out var isFirst);
         if (!isFirst)
         {
@@ -103,6 +111,7 @@ public partial class App : Application
             Type = RequestType.Heartbeat,
             SessionId = Process.GetCurrentProcess().SessionId,
             ScreensaverRunning = NativeMethods.IsScreensaverRunning(),
+            DisplayOff = _displayOff,
         });
 
         _status = response?.Status;
@@ -112,6 +121,55 @@ public partial class App : Application
 
         ShowWarningIfDue();
         UpdateTray();
+        RestartIfOutdated();
+    }
+
+    private bool _restartQueued;
+
+    /// <summary>
+    /// Nach einem Auto-Update laeuft dieser Prozess noch als alte Version von
+    /// einer beiseite gelegten Datei weiter. Sobald der Dienst eine andere
+    /// Version meldet UND auf der Platte wirklich eine andere Agent-Fassung
+    /// liegt, startet die Anzeige sich selbst neu. Der Datei-Vergleich
+    /// verhindert eine Neustartschleife, falls nur der Dienst getauscht wurde.
+    /// </summary>
+    private void RestartIfOutdated()
+    {
+        if (_restartQueued || _status?.ServiceVersion is not { } serviceVersion) return;
+
+        var mine = typeof(App).Assembly.GetName().Version ?? new Version(0, 0, 0);
+        var mineText = $"{Math.Max(mine.Major, 0)}.{Math.Max(mine.Minor, 0)}.{Math.Max(mine.Build, 0)}";
+        if (serviceVersion == mineText) return;
+
+        // Nicht mitten aus einer Passworteingabe kippen - dann eben, sobald das
+        // Fenster wieder zu ist.
+        if (_master is { IsLoaded: true }) return;
+
+        if (Path.GetDirectoryName(Environment.ProcessPath) is not { } dir) return;
+        var exe = Path.Combine(dir, "MonkeyAgent.exe");
+        if (!File.Exists(exe)) return;
+
+        try
+        {
+            var onDisk = FileVersionInfo.GetVersionInfo(exe).FileVersion;
+            if (onDisk is null || !Version.TryParse(onDisk, out var disk)) return;
+            var diskText = $"{Math.Max(disk.Major, 0)}.{Math.Max(disk.Minor, 0)}.{Math.Max(disk.Build, 0)}";
+            if (diskText == mineText) return;
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = exe,
+                UseShellExecute = true,
+                ArgumentList = { "--restart", Environment.ProcessId.ToString() },
+            });
+            _restartQueued = true;
+            Shutdown();
+        }
+        catch
+        {
+            // Dann eben beim naechsten Anmelden - der Autostart nimmt ohnehin
+            // die neue Datei.
+        }
     }
 
     /// <summary>
@@ -348,26 +406,46 @@ public partial class App : Application
         if (answer == MessageBoxResult.Yes) Shutdown();
     }
 
-    // -------------------------------------------------------- Tastenkuerzel
+    // ------------------------------------ Tastenkuerzel und Anzeigezustand
+
+    /// <summary>Vom Power-Broadcast gemeldet: Bildschirm ist gerade aus.</summary>
+    private bool _displayOff;
+
+    private IntPtr _displayNotification = IntPtr.Zero;
 
     private void RegisterHotkey()
     {
         if (_overlay is null) return;
 
         var handle = new WindowInteropHelper(_overlay).EnsureHandle();
-        HwndSource.FromHwnd(handle)?.AddHook(HotkeyHook);
+        HwndSource.FromHwnd(handle)?.AddHook(WindowHook);
 
         NativeMethods.RegisterHotKey(handle, HotkeyId,
             NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT | NativeMethods.MOD_SHIFT | NativeMethods.MOD_NOREPEAT,
             NativeMethods.VK_T);
+
+        // Ausgeschalteter Monitor zaehlt wie Bildschirmschoner - siehe
+        // NativeMethods. Ohne diese Registrierung kommt die Meldung nie an.
+        _displayNotification = NativeMethods.RegisterDisplayStateNotifications(handle);
     }
 
-    private IntPtr HotkeyHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    private IntPtr WindowHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         if (msg == NativeMethods.WM_HOTKEY && wParam.ToInt32() == HotkeyId)
         {
             ToggleOverlay();
             handled = true;
+        }
+        else if (msg == NativeMethods.WM_POWERBROADCAST
+                 && wParam.ToInt32() == NativeMethods.PBT_POWERSETTINGCHANGE
+                 && NativeMethods.TryReadDisplayOff(lParam, out var displayOff))
+        {
+            _displayOff = displayOff;
+
+            // Bildschirm wieder an: nicht auf den naechsten Timertakt warten,
+            // sonst zaehlt der Dienst bis zu zwei Sekunden zu wenig - und beim
+            // Ausschalten umgekehrt zu viel.
+            _ = PollAsync();
         }
 
         return IntPtr.Zero;
@@ -384,6 +462,9 @@ public partial class App : Application
             var handle = new WindowInteropHelper(_overlay).Handle;
             if (handle != IntPtr.Zero) NativeMethods.UnregisterHotKey(handle, HotkeyId);
         }
+
+        if (_displayNotification != IntPtr.Zero)
+            NativeMethods.UnregisterPowerSettingNotification(_displayNotification);
 
         if (_tray is not null)
         {

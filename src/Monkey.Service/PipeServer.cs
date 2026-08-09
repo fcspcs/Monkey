@@ -12,7 +12,7 @@ namespace Monkey.Service;
 /// keinerlei eigene Befugnis - er reicht nur das Passwort durch, geprueft wird im
 /// Dienst.
 /// </summary>
-internal sealed class PipeServer(GuardEngine engine) : BackgroundService
+internal sealed class PipeServer(GuardEngine engine, TelegramSync telegram) : BackgroundService
 {
     private const int Instances = 6;
 
@@ -54,9 +54,17 @@ internal sealed class PipeServer(GuardEngine engine) : BackgroundService
         try
         {
             var request = Request.FromJson(line);
-            response = request is null
-                ? Response.Fail("Request could not be read.")
-                : engine.Handle(request);
+
+            // Telegram-Anfragen reden mit dem Worker im Netz und laufen deshalb
+            // nicht durch das Engine-Lock - die Passwortpruefung holen sie sich
+            // selbst bei der Engine ab.
+            response = request switch
+            {
+                null => Response.Fail("Request could not be read."),
+                { Type: RequestType.TelegramSetup or RequestType.TelegramPair or RequestType.TelegramOff }
+                    => await telegram.HandleAsync(request),
+                _ => engine.Handle(request),
+            };
         }
         catch (Exception ex)
         {

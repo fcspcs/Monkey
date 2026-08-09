@@ -21,6 +21,9 @@
             <Setter Property="Padding" Value="12,5"/>
             <Setter Property="MinWidth" Value="104"/>
         </Style>
+        <Style TargetType="TabItem">
+            <Setter Property="Padding" Value="14,6"/>
+        </Style>
         <Style x:Key="Field" TargetType="TextBox">
             <Setter Property="Width" Value="66"/>
             <Setter Property="Padding" Value="4,3"/>
@@ -102,83 +105,166 @@
                 </StackPanel>
             </GroupBox>
 
-            <GroupBox Header="Pause the limit">
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="For:" Style="{StaticResource RowLabel}"/>
-                    <ComboBox x:Name="PauseMinutes" Width="80" IsEditable="True" Text="60"
-                              VerticalAlignment="Center">
-                        <ComboBoxItem>15</ComboBoxItem>
-                        <ComboBoxItem>30</ComboBoxItem>
-                        <ComboBoxItem>60</ComboBoxItem>
-                        <ComboBoxItem>120</ComboBoxItem>
-                        <ComboBoxItem>240</ComboBoxItem>
-                    </ComboBox>
-                    <TextBlock Text="min" Margin="6,0,0,0"/>
-                    <Button x:Name="ResumeButton" Content="End pause" Click="OnResume" Margin="12,0,8,0"/>
-                    <Button x:Name="PauseButton" Content="Start pause" Click="OnPause" IsDefault="True"/>
-                </StackPanel>
-            </GroupBox>
+            <!-- Zwei Welten, ein Fenster: die normalen Regler und die optionale
+                 Telegram-Anbindung teilen sich den Platz per Tab. -->
+            <TabControl Background="Transparent" BorderThickness="0" Padding="0" Margin="0,0,0,0">
 
-            <GroupBox Header="Adjust balance">
-                <StackPanel>
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                        <Button x:Name="Minus30Button" Content="−30 min" Click="OnMinus30"
-                                MinWidth="110" Margin="0,0,10,0"/>
-                        <Button x:Name="Plus30Button" Content="+30 min" Click="OnPlus30" MinWidth="110"/>
+                <TabItem Header="General">
+                    <StackPanel Margin="0,12,0,0">
+
+                        <GroupBox Header="Pause the limit">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="For:" Style="{StaticResource RowLabel}"/>
+                                <ComboBox x:Name="PauseMinutes" Width="80" IsEditable="True" Text="60"
+                                          VerticalAlignment="Center">
+                                    <ComboBoxItem>15</ComboBoxItem>
+                                    <ComboBoxItem>30</ComboBoxItem>
+                                    <ComboBoxItem>60</ComboBoxItem>
+                                    <ComboBoxItem>120</ComboBoxItem>
+                                    <ComboBoxItem>240</ComboBoxItem>
+                                </ComboBox>
+                                <TextBlock Text="min" Margin="6,0,0,0"/>
+                                <Button x:Name="ResumeButton" Content="End pause" Click="OnResume" Margin="12,0,8,0"/>
+                                <Button x:Name="PauseButton" Content="Start pause" Click="OnPause" IsDefault="True"/>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <GroupBox Header="Adjust balance">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <Button x:Name="Minus30Button" Content="−30 min" Click="OnMinus30"
+                                            MinWidth="110" Margin="0,0,10,0"/>
+                                    <Button x:Name="Plus30Button" Content="+30 min" Click="OnPlus30" MinWidth="110"/>
+                                </StackPanel>
+                                <TextBlock x:Name="GrantBudgetText" Text="" Style="{StaticResource Hint}"
+                                           Margin="0,8,0,0" HorizontalAlignment="Center" TextAlignment="Center"/>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <GroupBox Header="Settings">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Per day:" Style="{StaticResource RowLabel}" Margin="0,4,10,4"/>
+                                    <TextBox   Grid.Row="0" Grid.Column="1" x:Name="DailyMinutes" Style="{StaticResource Field}" Margin="0,4"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="2" Text="minutes" Style="{StaticResource Hint}"/>
+
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Balance cap:" Style="{StaticResource RowLabel}" Margin="0,4,10,4"/>
+                                    <TextBox   Grid.Row="1" Grid.Column="1" x:Name="CapMinutes" Style="{StaticResource Field}" Margin="0,4"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="2" Text="minutes – how much can pile up" Style="{StaticResource Hint}"/>
+
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Warn at:" Style="{StaticResource RowLabel}" Margin="0,4,10,4"/>
+                                    <TextBox   Grid.Row="2" Grid.Column="1" x:Name="WarnMinutes" Style="{StaticResource Field}" Margin="0,4"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="2" Text="minutes left" Style="{StaticResource Hint}"/>
+
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Grace period:" Style="{StaticResource RowLabel}" Margin="0,4,10,4"/>
+                                    <TextBox   Grid.Row="3" Grid.Column="1" x:Name="GraceSeconds" Style="{StaticResource Field}" Margin="0,4"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="2" Text="seconds before signing out" Style="{StaticResource Hint}"/>
+
+                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Buffer after sign-in:" Style="{StaticResource RowLabel}" Margin="0,4,10,4"/>
+                                    <TextBox   Grid.Row="4" Grid.Column="1" x:Name="LoginGraceSeconds" Style="{StaticResource Field}" Margin="0,4"/>
+                                    <TextBlock Grid.Row="4" Grid.Column="2" Text="seconds when the balance is empty" Style="{StaticResource Hint}"/>
+                                </Grid>
+
+                                <CheckBox x:Name="PauseOnLock" Content="Pause the clock while the session is locked" Margin="0,8,0,4"/>
+                                <CheckBox x:Name="PauseOnScreensaver" Content="Pause the clock while the screensaver runs or the display is off" Margin="0,0,0,4"/>
+                                <CheckBox x:Name="AutoUpdateBox" Content="Install new releases automatically (signed updates only)"/>
+                                <TextBlock x:Name="VersionText" Style="{StaticResource Hint}" Margin="0,6,0,0" Text=""/>
+                                <Button x:Name="SaveConfigButton" Content="Save settings" Click="OnSaveConfig"
+                                        HorizontalAlignment="Right" Margin="0,10,0,0"/>
+                            </StackPanel>
+                        </GroupBox>
+
                     </StackPanel>
-                    <TextBlock x:Name="GrantBudgetText" Text="" Style="{StaticResource Hint}"
-                               Margin="0,8,0,0" HorizontalAlignment="Center" TextAlignment="Center"/>
-                </StackPanel>
-            </GroupBox>
+                </TabItem>
 
-            <GroupBox Header="Settings">
-                <StackPanel>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
+                <TabItem Header="Telegram">
+                    <StackPanel Margin="0,12,0,0">
 
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Per day:" Style="{StaticResource RowLabel}" Margin="0,4,10,4"/>
-                        <TextBox   Grid.Row="0" Grid.Column="1" x:Name="DailyMinutes" Style="{StaticResource Field}" Margin="0,4"/>
-                        <TextBlock Grid.Row="0" Grid.Column="2" Text="minutes" Style="{StaticResource Hint}"/>
+                        <TextBlock TextWrapping="Wrap" Foreground="#FF555560" Margin="0,0,0,8"
+                                   Text="Optional: two Telegram bots — one lets Monkey check the balance, one lets the friend add time or pause the limit remotely, no master password needed on this PC. Works even while the PC is off, through your own free Cloudflare Worker. The step-by-step guide is in the README."/>
 
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Balance cap:" Style="{StaticResource RowLabel}" Margin="0,4,10,4"/>
-                        <TextBox   Grid.Row="1" Grid.Column="1" x:Name="CapMinutes" Style="{StaticResource Field}" Margin="0,4"/>
-                        <TextBlock Grid.Row="1" Grid.Column="2" Text="minutes – how much can pile up" Style="{StaticResource Hint}"/>
+                        <TextBlock x:Name="TelegramStatusText" Text="Not connected." FontWeight="SemiBold"
+                                   TextWrapping="Wrap" Margin="0,0,0,10"/>
 
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Warn at:" Style="{StaticResource RowLabel}" Margin="0,4,10,4"/>
-                        <TextBox   Grid.Row="2" Grid.Column="1" x:Name="WarnMinutes" Style="{StaticResource Field}" Margin="0,4"/>
-                        <TextBlock Grid.Row="2" Grid.Column="2" Text="minutes left" Style="{StaticResource Hint}"/>
+                        <GroupBox Header="Connection">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
 
-                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Grace period:" Style="{StaticResource RowLabel}" Margin="0,4,10,4"/>
-                        <TextBox   Grid.Row="3" Grid.Column="1" x:Name="GraceSeconds" Style="{StaticResource Field}" Margin="0,4"/>
-                        <TextBlock Grid.Row="3" Grid.Column="2" Text="seconds before signing out" Style="{StaticResource Hint}"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Worker URL:" Style="{StaticResource RowLabel}" Width="118" Margin="0,4,10,4"/>
+                                    <TextBox   Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2" x:Name="WorkerUrlBox" Padding="4,3" Margin="0,4" VerticalAlignment="Center"/>
 
-                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Buffer after sign-in:" Style="{StaticResource RowLabel}" Margin="0,4,10,4"/>
-                        <TextBox   Grid.Row="4" Grid.Column="1" x:Name="LoginGraceSeconds" Style="{StaticResource Field}" Margin="0,4"/>
-                        <TextBlock Grid.Row="4" Grid.Column="2" Text="seconds when the balance is empty" Style="{StaticResource Hint}"/>
-                    </Grid>
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Sync secret:" Style="{StaticResource RowLabel}" Width="118" Margin="0,4,10,4"/>
+                                    <TextBox   Grid.Row="1" Grid.Column="1" x:Name="SyncSecretBox" IsReadOnly="True" Padding="4,3" Margin="0,4" VerticalAlignment="Center"/>
+                                    <Button    Grid.Row="1" Grid.Column="2" x:Name="GenerateSecretButton" Content="Generate" Click="OnGenerateSyncSecret" Margin="8,4,0,4"/>
 
-                    <CheckBox x:Name="PauseOnLock" Content="Pause the clock while the session is locked" Margin="0,8,0,4"/>
-                    <CheckBox x:Name="PauseOnScreensaver" Content="Pause the clock while the screensaver runs"/>
-                    <Button x:Name="SaveConfigButton" Content="Save settings" Click="OnSaveConfig"
-                            HorizontalAlignment="Right" Margin="0,10,0,0"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Monkey bot token:" Style="{StaticResource RowLabel}" Width="118" Margin="0,4,10,4"/>
+                                    <PasswordBox Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" x:Name="MonkeyTokenBox" Padding="4,3" Margin="0,4" VerticalAlignment="Center"/>
 
-                    <Border x:Name="MessageBorder" Background="#FFE8E8EE" CornerRadius="5" Padding="10,7"
-                            Visibility="Collapsed" Margin="0,10,0,0">
-                        <TextBlock x:Name="MessageText" TextWrapping="Wrap"/>
-                    </Border>
-                </StackPanel>
-            </GroupBox>
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Friend bot token:" Style="{StaticResource RowLabel}" Width="118" Margin="0,4,10,4"/>
+                                    <PasswordBox Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" x:Name="FriendTokenBox" Padding="4,3" Margin="0,4" VerticalAlignment="Center"/>
+                                </Grid>
+
+                                <TextBlock Style="{StaticResource Hint}" Margin="0,6,0,0"
+                                           Text="Generate the sync secret here, store it in Cloudflare as the SYNC_SECRET secret, then connect. The bot tokens come from @BotFather; they go to your worker and are not kept on this PC."/>
+
+                                <Button x:Name="ConnectTelegramButton" Content="Save &amp; connect" Click="OnTelegramConnect"
+                                        HorizontalAlignment="Right" Margin="0,10,0,0"/>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <GroupBox Header="Pairing">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,8"
+                                           Text="Each chat has to prove itself once with a one-time code. Create a code, then send  /pair CODE  to the matching bot within 10 minutes."/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button x:Name="PairMonkeyButton" Content="Code for Monkey's bot" Click="OnPairMonkey"/>
+                                    <Button x:Name="PairFriendButton" Content="Code for the friend's bot" Click="OnPairFriend" Margin="10,0,0,0"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <GroupBox Header="Disconnect">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,8"
+                                           Text="Removes both webhooks and wipes the worker's stored tokens, state and command queue."/>
+                                <Button x:Name="TelegramOffButton" Content="Disconnect Telegram" Click="OnTelegramOff"
+                                        HorizontalAlignment="Left"/>
+                            </StackPanel>
+                        </GroupBox>
+
+                    </StackPanel>
+                </TabItem>
+
+            </TabControl>
+
+            <Border x:Name="MessageBorder" Background="#FFE8E8EE" CornerRadius="5" Padding="10,7"
+                    Visibility="Collapsed" Margin="0,4,0,0">
+                <TextBlock x:Name="MessageText" TextWrapping="Wrap"/>
+            </Border>
 
         </StackPanel>
     </ScrollViewer>

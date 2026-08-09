@@ -62,7 +62,7 @@ internal sealed class GuardEngine
     /// </summary>
     public SemaphoreSlim TelegramKick { get; } = new(0, 1);
 
-    private readonly record struct AgentReport(DateTimeOffset LastSeen, bool ScreensaverRunning);
+    private readonly record struct AgentReport(DateTimeOffset LastSeen, bool ScreensaverRunning, bool DisplayOff);
 
     public GuardEngine()
     {
@@ -199,8 +199,11 @@ internal sealed class GuardEngine
     }
 
     /// <summary>
-    /// Sitzungen, in denen gerade jemand sitzt. Gesperrte Sitzungen und laufender
-    /// Bildschirmschoner zaehlen nicht - alles andere schon, auch reines Zuschauen.
+    /// Sitzungen, in denen gerade jemand sitzt. Gesperrte Sitzungen, laufender
+    /// Bildschirmschoner und ausgeschalteter Bildschirm zaehlen nicht - alles
+    /// andere schon, auch reines Zuschauen. Der abgeschaltete Monitor steht dem
+    /// Schoner gleich, weil modernes Windows meist gar keinen Schoner mehr
+    /// startet, sondern die Anzeige einfach ausknipst.
     /// </summary>
     private List<int> CountingSessions(List<Native.SessionInfo> sessions)
     {
@@ -214,7 +217,7 @@ internal sealed class GuardEngine
             if (_state.Config.PauseOnScreensaver
                 && _agents.TryGetValue(session.SessionId, out var report)
                 && _clock.Now - report.LastSeen < AgentTimeout
-                && report.ScreensaverRunning)
+                && (report.ScreensaverRunning || report.DisplayOff))
                 continue;
 
             result.Add(session.SessionId);
@@ -345,7 +348,7 @@ internal sealed class GuardEngine
                     return Response.Success(status: BuildStatus(request.SessionId));
 
                 case RequestType.Heartbeat:
-                    _agents[request.SessionId] = new AgentReport(_clock.Now, request.ScreensaverRunning);
+                    _agents[request.SessionId] = new AgentReport(_clock.Now, request.ScreensaverRunning, request.DisplayOff);
                     return Response.Success(status: BuildStatus(request.SessionId));
 
                 case RequestType.Pause:

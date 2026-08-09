@@ -111,6 +111,7 @@ public partial class App : Application
             Type = RequestType.Heartbeat,
             SessionId = Process.GetCurrentProcess().SessionId,
             ScreensaverRunning = NativeMethods.IsScreensaverRunning(),
+            DisplayOff = _displayOff,
         });
 
         _status = response?.Status;
@@ -405,26 +406,46 @@ public partial class App : Application
         if (answer == MessageBoxResult.Yes) Shutdown();
     }
 
-    // -------------------------------------------------------- Tastenkuerzel
+    // ------------------------------------ Tastenkuerzel und Anzeigezustand
+
+    /// <summary>Vom Power-Broadcast gemeldet: Bildschirm ist gerade aus.</summary>
+    private bool _displayOff;
+
+    private IntPtr _displayNotification = IntPtr.Zero;
 
     private void RegisterHotkey()
     {
         if (_overlay is null) return;
 
         var handle = new WindowInteropHelper(_overlay).EnsureHandle();
-        HwndSource.FromHwnd(handle)?.AddHook(HotkeyHook);
+        HwndSource.FromHwnd(handle)?.AddHook(WindowHook);
 
         NativeMethods.RegisterHotKey(handle, HotkeyId,
             NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT | NativeMethods.MOD_SHIFT | NativeMethods.MOD_NOREPEAT,
             NativeMethods.VK_T);
+
+        // Ausgeschalteter Monitor zaehlt wie Bildschirmschoner - siehe
+        // NativeMethods. Ohne diese Registrierung kommt die Meldung nie an.
+        _displayNotification = NativeMethods.RegisterDisplayStateNotifications(handle);
     }
 
-    private IntPtr HotkeyHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    private IntPtr WindowHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         if (msg == NativeMethods.WM_HOTKEY && wParam.ToInt32() == HotkeyId)
         {
             ToggleOverlay();
             handled = true;
+        }
+        else if (msg == NativeMethods.WM_POWERBROADCAST
+                 && wParam.ToInt32() == NativeMethods.PBT_POWERSETTINGCHANGE
+                 && NativeMethods.TryReadDisplayOff(lParam, out var displayOff))
+        {
+            _displayOff = displayOff;
+
+            // Bildschirm wieder an: nicht auf den naechsten Timertakt warten,
+            // sonst zaehlt der Dienst bis zu zwei Sekunden zu wenig - und beim
+            // Ausschalten umgekehrt zu viel.
+            _ = PollAsync();
         }
 
         return IntPtr.Zero;
@@ -441,6 +462,9 @@ public partial class App : Application
             var handle = new WindowInteropHelper(_overlay).Handle;
             if (handle != IntPtr.Zero) NativeMethods.UnregisterHotKey(handle, HotkeyId);
         }
+
+        if (_displayNotification != IntPtr.Zero)
+            NativeMethods.UnregisterPowerSettingNotification(_displayNotification);
 
         if (_tray is not null)
         {

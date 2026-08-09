@@ -58,8 +58,9 @@ you trust. Then "just five more minutes" isn't an argument with yourself at 1am.
   never steals focus, so it won't eat your keystrokes or tab you out of a game.
 - **Signs you out** when the balance hits zero, with a grace period to save your
   work.
-- **Counts fairly.** The clock stops while the session is locked or the
-  screensaver is on, and sleep costs you nothing.
+- **Counts fairly.** The clock stops while the session is locked, the
+  screensaver is on or the display has switched itself off, and sleep costs
+  you nothing.
 - **Doesn't let itself be switched off in passing.** The service guards itself
   and puts its locks back after every start.
 

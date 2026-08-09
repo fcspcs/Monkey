@@ -69,12 +69,125 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SystemParametersInfo(uint uiAction, uint uiParam,
-        ref bool pvParam, uint fWinIni);
+        ref int pvParam, uint fWinIni);
 
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern IntPtr OpenDesktop(string lpszDesktop, uint dwFlags,
+        [MarshalAs(UnmanagedType.Bool)] bool fInherit, uint dwDesiredAccess);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseDesktop(IntPtr hDesktop);
+
+    private const uint DESKTOP_READOBJECTS = 0x0001;
+    private const int ERROR_ACCESS_DENIED = 5;
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+    /// <summary>
+    /// Laeuft gerade ein Bildschirmschoner? Drei Blickwinkel, weil keiner allein
+    /// alle Faelle trifft: die offizielle Abfrage; der Desktop "Screen-saver",
+    /// auf dem Windows den Schoner laufen laesst (existiert er - auch wenn der
+    /// Zugriff verweigert wird -, laeuft ein Schoner); und zuletzt das
+    /// Vordergrundfenster. Letzteres faengt den von Hand gestarteten Schoner
+    /// (Verknuepfung oder Hotkey auf eine .scr-Datei) - fuer Windows ist der nur
+    /// ein normales Vollbildprogramm, das System-Flag bleibt dann aus.
+    /// </summary>
     public static bool IsScreensaverRunning()
     {
-        var running = false;
-        return SystemParametersInfo(SPI_GETSCREENSAVERRUNNING, 0, ref running, 0) && running;
+        var running = 0;
+        if (SystemParametersInfo(SPI_GETSCREENSAVERRUNNING, 0, ref running, 0) && running != 0)
+            return true;
+
+        var desktop = OpenDesktop("Screen-saver", 0, false, DESKTOP_READOBJECTS);
+        if (desktop != IntPtr.Zero)
+        {
+            CloseDesktop(desktop);
+            return true;
+        }
+        if (Marshal.GetLastWin32Error() == ERROR_ACCESS_DENIED)
+            return true;
+
+        return ForegroundWindowIsScreensaver();
+    }
+
+    private static bool ForegroundWindowIsScreensaver()
+    {
+        try
+        {
+            var window = GetForegroundWindow();
+            if (window == IntPtr.Zero) return false;
+
+            GetWindowThreadProcessId(window, out var pid);
+            if (pid == 0) return false;
+
+            using var process = System.Diagnostics.Process.GetProcessById((int)pid);
+            return process.MainModule?.FileName is { } file
+                   && file.EndsWith(".scr", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            // Prozess schon weg oder Zugriff verweigert - dann eben kein Schoner.
+            return false;
+        }
+    }
+
+    // --- Bildschirm aus ---
+    // Auf modernem Windows gibt es haeufig gar keinen Bildschirmschoner mehr:
+    // der Monitor geht nach der Wartezeit schlicht aus. Das meldet Windows
+    // ueber eine Power-Benachrichtigung - fuer die Uhr zaehlt es wie ein
+    // laufender Schoner.
+
+    public const int WM_POWERBROADCAST = 0x0218;
+    public const int PBT_POWERSETTINGCHANGE = 0x8013;
+
+    private static Guid _consoleDisplayState = new("6FE69556-704A-47A0-8F24-C28D936FDA47");
+
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
+    private struct PowerBroadcastSetting
+    {
+        public Guid PowerSetting;
+        public uint DataLength;
+        public byte Data;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr RegisterPowerSettingNotification(IntPtr hRecipient,
+        ref Guid powerSettingGuid, uint flags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool UnregisterPowerSettingNotification(IntPtr handle);
+
+    /// <summary>Meldet dem Fenster kuenftig jeden Wechsel des Anzeigezustands.</summary>
+    public static IntPtr RegisterDisplayStateNotifications(IntPtr window) =>
+        RegisterPowerSettingNotification(window, ref _consoleDisplayState, 0 /* Fensterhandle */);
+
+    /// <summary>
+    /// Liest aus einer WM_POWERBROADCAST/PBT_POWERSETTINGCHANGE-Nachricht den
+    /// Anzeigezustand. 0 = aus, 1 = an, 2 = gedimmt - nur "aus" haelt die Uhr an.
+    /// </summary>
+    public static bool TryReadDisplayOff(IntPtr lParam, out bool displayOff)
+    {
+        displayOff = false;
+        if (lParam == IntPtr.Zero) return false;
+
+        try
+        {
+            var setting = Marshal.PtrToStructure<PowerBroadcastSetting>(lParam);
+            if (setting.PowerSetting != _consoleDisplayState || setting.DataLength < 1) return false;
+
+            displayOff = setting.Data == 0;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     // --- Globales Tastenkuerzel ---

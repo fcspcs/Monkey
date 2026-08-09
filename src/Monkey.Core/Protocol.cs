@@ -36,6 +36,9 @@ public sealed class Request
     public int SessionId { get; set; }
     public bool ScreensaverRunning { get; set; }
 
+    /// <summary>Bildschirm ist aus (moderner Ersatz des Bildschirmschoners).</summary>
+    public bool DisplayOff { get; set; }
+
     public GuardConfig? Config { get; set; }
 
     // Telegram-Einrichtung. Die Bot-Tokens laufen hier nur einmal durch: der Dienst

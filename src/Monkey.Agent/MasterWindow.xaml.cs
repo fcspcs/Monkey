@@ -173,7 +173,12 @@ public partial class MasterWindow : Window
             LoginGraceSeconds.Text = Text(config.LoginGraceSeconds);
             PauseOnLock.IsChecked = config.PauseOnLock;
             PauseOnScreensaver.IsChecked = config.PauseOnScreensaver;
+            AutoUpdateBox.IsChecked = config.AutoUpdate;
         }
+
+        VersionText.Text = status.ServiceVersion is { } version
+            ? $"Installed version: {version}. Updates come from the project's signed releases."
+            : string.Empty;
 
         if (status.TelegramEnabled)
         {
@@ -262,6 +267,7 @@ public partial class MasterWindow : Window
                 LoginGraceSeconds = loginGrace,
                 PauseOnLock = PauseOnLock.IsChecked == true,
                 PauseOnScreensaver = PauseOnScreensaver.IsChecked == true,
+                AutoUpdate = AutoUpdateBox.IsChecked == true,
             },
         });
     }

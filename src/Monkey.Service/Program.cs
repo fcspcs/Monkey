@@ -35,6 +35,11 @@ builder.Services.AddHostedService<GuardWorker>();
 builder.Services.AddHostedService<PipeServer>();
 builder.Services.AddHostedService(provider => provider.GetRequiredService<TelegramSync>());
 
+// Selbstaktualisierung nur im echten Dienstbetrieb - ein Konsolentestlauf soll
+// nicht an der installierten Fassung herumtauschen.
+if (runningAsService)
+    builder.Services.AddHostedService<UpdateWorker>();
+
 try
 {
     builder.Build().Run();

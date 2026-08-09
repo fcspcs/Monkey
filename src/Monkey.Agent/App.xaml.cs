@@ -63,6 +63,14 @@ public partial class App : Application
         var pipeOverride = ArgumentValue(e.Args, "--pipe");
         if (pipeOverride is not null) Paths.UseTestLocation(null, pipeOverride);
 
+        // Nach einem Selbst-Update: erst warten, bis der alte Agent weg ist,
+        // sonst scheitert diese Instanz gleich am Einzelinstanz-Mutex.
+        if (ArgumentValue(e.Args, "--restart") is { } oldPid && int.TryParse(oldPid, out var pid))
+        {
+            try { Process.GetProcessById(pid).WaitForExit(15000); }
+            catch { /* schon weg */ }
+        }
+
         _singleInstance = new Mutex(true, Paths.MutexName + (pipeOverride ?? string.Empty), out var isFirst);
         if (!isFirst)
         {
@@ -112,6 +120,55 @@ public partial class App : Application
 
         ShowWarningIfDue();
         UpdateTray();
+        RestartIfOutdated();
+    }
+
+    private bool _restartQueued;
+
+    /// <summary>
+    /// Nach einem Auto-Update laeuft dieser Prozess noch als alte Version von
+    /// einer beiseite gelegten Datei weiter. Sobald der Dienst eine andere
+    /// Version meldet UND auf der Platte wirklich eine andere Agent-Fassung
+    /// liegt, startet die Anzeige sich selbst neu. Der Datei-Vergleich
+    /// verhindert eine Neustartschleife, falls nur der Dienst getauscht wurde.
+    /// </summary>
+    private void RestartIfOutdated()
+    {
+        if (_restartQueued || _status?.ServiceVersion is not { } serviceVersion) return;
+
+        var mine = typeof(App).Assembly.GetName().Version ?? new Version(0, 0, 0);
+        var mineText = $"{Math.Max(mine.Major, 0)}.{Math.Max(mine.Minor, 0)}.{Math.Max(mine.Build, 0)}";
+        if (serviceVersion == mineText) return;
+
+        // Nicht mitten aus einer Passworteingabe kippen - dann eben, sobald das
+        // Fenster wieder zu ist.
+        if (_master is { IsLoaded: true }) return;
+
+        if (Path.GetDirectoryName(Environment.ProcessPath) is not { } dir) return;
+        var exe = Path.Combine(dir, "MonkeyAgent.exe");
+        if (!File.Exists(exe)) return;
+
+        try
+        {
+            var onDisk = FileVersionInfo.GetVersionInfo(exe).FileVersion;
+            if (onDisk is null || !Version.TryParse(onDisk, out var disk)) return;
+            var diskText = $"{Math.Max(disk.Major, 0)}.{Math.Max(disk.Minor, 0)}.{Math.Max(disk.Build, 0)}";
+            if (diskText == mineText) return;
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = exe,
+                UseShellExecute = true,
+                ArgumentList = { "--restart", Environment.ProcessId.ToString() },
+            });
+            _restartQueued = true;
+            Shutdown();
+        }
+        catch
+        {
+            // Dann eben beim naechsten Anmelden - der Autostart nimmt ohnehin
+            // die neue Datei.
+        }
     }
 
     /// <summary>

@@ -44,6 +44,13 @@ public sealed class GuardConfig
     /// <summary>Laengste am Stueck erlaubte Master-Pause.</summary>
     public int MaxPauseMinutes { get; set; } = 480;
 
+    /// <summary>
+    /// Neue Releases selbststaendig installieren. Braucht kein Passwort, denn es
+    /// kann nur in eine Richtung: eine neuere, vom Projektschluessel signierte
+    /// Version einspielen - Guthaben und Passwort bleiben dabei unberuehrt.
+    /// </summary>
+    public bool AutoUpdate { get; set; } = true;
+
     // Alle Felder sind Werttypen - eine flache Kopie genuegt.
     public GuardConfig Clone() => (GuardConfig)MemberwiseClone();
 }

@@ -89,6 +89,12 @@ public sealed class StatusDto
     public bool PasswordConfigured { get; set; }
     public GuardConfig? Config { get; set; }
 
+    /// <summary>
+    /// Version des laufenden Dienstes. Der Agent vergleicht sie mit seiner
+    /// eigenen und startet sich nach einem Update selbst neu.
+    /// </summary>
+    public string? ServiceVersion { get; set; }
+
     // Zustand der optionalen Telegram-Anbindung, nur fuer die Anzeige.
     public bool TelegramEnabled { get; set; }
     public string? TelegramWorkerHost { get; set; }

@@ -77,6 +77,37 @@ jobs:
         shell: pwsh
         run: ./build.ps1 -Version $env:RELEASE_VERSION
 
+      # Signiert das Update-Manifest fuer die Selbstaktualisierung. Ohne den
+      # Secret UPDATE_SIGNING_KEY (siehe tools/new-update-key.ps1) erscheint das
+      # Release ohne update.json - installierte Fassungen ruehren es dann nicht an.
+      - name: Sign the update manifest
+        shell: pwsh
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          if (-not $env:UPDATE_SIGNING_KEY) {
+            Write-Host "No UPDATE_SIGNING_KEY secret - publishing without update.json (no auto-update to this release)."
+            exit 0
+          }
+
+          $sha = (Get-FileHash dist/MonkeySetup.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          $version = $env:RELEASE_VERSION
+
+          # Muss byte-genau zu UpdateWorker.CheckOnceAsync passen.
+          $payload = [System.Text.Encoding]::ASCII.GetBytes("MonkeyUpdate.v1`n$version`n$sha`n")
+
+          $ecdsa = [System.Security.Cryptography.ECDsa]::Create()
+          $ecdsa.ImportFromPem($env:UPDATE_SIGNING_KEY)
+          $signature = [Convert]::ToBase64String($ecdsa.SignData(
+            $payload,
+            [System.Security.Cryptography.HashAlgorithmName]::SHA256,
+            [System.Security.Cryptography.DSASignatureFormat]::Rfc3279DerSequence))
+
+          [ordered]@{ version = $version; sha256 = $sha; signature = $signature } |
+            ConvertTo-Json | Set-Content dist/update.json -Encoding ascii
+
+          Write-Host "update.json written and signed for $version."
+
       - name: Publish the release
         shell: pwsh
         env:
@@ -95,8 +126,10 @@ jobs:
           # Gibt es den Tag noch nicht, legt GitHub ihn auf diesen Stand an.
           $target = (git rev-parse HEAD).Trim()
 
-          [string[]]$arguments = @(
-            'release', 'create', $tag, 'dist/MonkeySetup.exe',
+          [string[]]$files = @('dist/MonkeySetup.exe')
+          if (Test-Path 'dist/update.json') { $files += 'dist/update.json' }
+
+          [string[]]$arguments = @('release', 'create', $tag) + $files + @(
             '--title', "Monkey $number",
             '--target', $target
           )

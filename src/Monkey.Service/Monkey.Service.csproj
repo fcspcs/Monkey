@@ -27,4 +27,12 @@
     <ProjectReference Include="..\Monkey.Core\Monkey.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Oeffentlicher Schluessel fuer signierte Auto-Updates (tools/new-update-key.ps1).
+         Fehlt die Datei, baut alles trotzdem - Auto-Update bleibt dann einfach aus. -->
+    <EmbeddedResource Include="..\..\assets\update-key.pem"
+                      Condition="Exists('..\..\assets\update-key.pem')"
+                      LogicalName="update-key.pem" />
+  </ItemGroup>
+
 </Project>

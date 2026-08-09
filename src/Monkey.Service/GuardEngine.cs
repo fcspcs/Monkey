@@ -451,6 +451,7 @@ internal sealed class GuardEngine
             config.PauseOnLock = incoming.PauseOnLock;
             config.PauseOnScreensaver = incoming.PauseOnScreensaver;
             config.WarnMinutes = Math.Clamp(incoming.WarnMinutes, 1, 24 * 60);
+            config.AutoUpdate = incoming.AutoUpdate;
 
             // MaxManualGrantMinutes ist bewusst NICHT enthalten - es wird nur beim
             // Installieren festgelegt und laesst sich hier nicht aendern.
@@ -478,6 +479,12 @@ internal sealed class GuardEngine
             Log.Write("Master password changed.");
             return Response.Success("Master password changed.", BuildStatus(request.SessionId));
         });
+    }
+
+    /// <summary>Fuer den Update-Pruefer: laufend abgefragt, deshalb eigener kurzer Weg.</summary>
+    public bool AutoUpdateEnabled
+    {
+        get { lock (_gate) return _state.Config.AutoUpdate; }
     }
 
     // ------------------------------------------------------------- Telegram
@@ -731,6 +738,7 @@ internal sealed class GuardEngine
             ClockTamperEvents = _state.ClockTamperEvents,
             PasswordConfigured = _state.HasPassword,
             Config = _state.Config.Clone(),
+            ServiceVersion = UpdateWorker.CurrentVersionText,
             TelegramEnabled = _state.Telegram.Enabled,
             TelegramWorkerHost = _state.Telegram.WorkerUrl is { } workerUrl
                 && Uri.TryCreate(workerUrl, UriKind.Absolute, out var workerUri) ? workerUri.Host : null,

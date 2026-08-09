@@ -179,7 +179,9 @@
                                 </Grid>
 
                                 <CheckBox x:Name="PauseOnLock" Content="Pause the clock while the session is locked" Margin="0,8,0,4"/>
-                                <CheckBox x:Name="PauseOnScreensaver" Content="Pause the clock while the screensaver runs"/>
+                                <CheckBox x:Name="PauseOnScreensaver" Content="Pause the clock while the screensaver runs" Margin="0,0,0,4"/>
+                                <CheckBox x:Name="AutoUpdateBox" Content="Install new releases automatically (signed updates only)"/>
+                                <TextBlock x:Name="VersionText" Style="{StaticResource Hint}" Margin="0,6,0,0" Text=""/>
                                 <Button x:Name="SaveConfigButton" Content="Save settings" Click="OnSaveConfig"
                                         HorizontalAlignment="Right" Margin="0,10,0,0"/>
                             </StackPanel>

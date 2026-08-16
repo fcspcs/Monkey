@@ -61,7 +61,10 @@ internal sealed class PipeServer(GuardEngine engine, TelegramSync telegram) : Ba
             response = request switch
             {
                 null => Response.Fail("Request could not be read."),
-                { Type: RequestType.TelegramSetup or RequestType.TelegramPair or RequestType.TelegramOff }
+                { Type: RequestType.TelegramSetup or RequestType.TelegramDeploy or
+                        RequestType.TelegramWorkerCheck or RequestType.TelegramWorkerUpdate or
+                        RequestType.TelegramWorkerRemove or RequestType.TelegramPair or
+                        RequestType.TelegramOff }
                     => await telegram.HandleAsync(request),
                 _ => engine.Handle(request),
             };

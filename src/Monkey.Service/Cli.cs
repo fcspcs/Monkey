@@ -70,9 +70,10 @@ internal static class Cli
         if (Flag(args, "--password-stdin"))
             password = ReadStdinPassword();
 
-        if (string.IsNullOrWhiteSpace(password) || password.Length < 4)
+        if (string.IsNullOrWhiteSpace(password) || password.Length < PasswordHash.MinimumLength)
         {
-            Console.Error.WriteLine("A master password with at least 4 characters is required.");
+            Console.Error.WriteLine(
+                $"A master password with at least {PasswordHash.MinimumLength} characters is required.");
             return 2;
         }
 

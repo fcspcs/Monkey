@@ -73,6 +73,44 @@ public sealed class TelegramSettings
     /// Zustandsdatei lesen duerfen, sehen hier nur Chiffrat.
     /// </summary>
     public string? SyncSecretProtected { get; set; }
+
+    /// <summary>
+    /// Metadaten des automatisch eingerichteten Workers. Sie sind keine
+    /// Geheimnisse; das API-Token wird weiterhin niemals gespeichert.
+    /// </summary>
+    public bool Managed { get; set; }
+    public string? CloudflareAccountId { get; set; }
+    public string? ScriptName { get; set; }
+    public string? KvNamespaceId { get; set; }
+    public int? WorkerVersion { get; set; }
+}
+
+/// <summary>
+/// Ein Kalendertag in der Rueckschau. Rein zur Anzeige - keine Entscheidung des
+/// Dienstes haengt daran. In Sekunden, weil der Dienst so rechnet; auf Minuten
+/// rundet erst die Anzeige.
+/// </summary>
+public sealed class DayStat
+{
+    public DateOnly Date { get; set; }
+
+    /// <summary>Tatsaechlich am Rechner verbrauchte Zeit.</summary>
+    public double UsedSeconds { get; set; }
+
+    /// <summary>Was die Tagesgutschrift beigesteuert hat - nach dem Deckel.</summary>
+    public double GrantedSeconds { get; set; }
+
+    /// <summary>Per Master-Passwort oder Telegram nachgelegt.</summary>
+    public double AddedSeconds { get; set; }
+
+    /// <summary>Ebenso abgezogen, als positiver Betrag.</summary>
+    public double RemovedSeconds { get; set; }
+
+    /// <summary>Stand am Tagesende - beim laufenden Tag der aktuelle.</summary>
+    public double BalanceEndSeconds { get; set; }
+
+    /// <summary>Davon erspart, also aus Tagesgutschriften statt nachgelegt.</summary>
+    public double EarnedEndSeconds { get; set; }
 }
 
 public sealed class GuardState
@@ -121,6 +159,15 @@ public sealed class GuardState
     public int EmptyGraceRuns { get; set; }
 
     public DateTimeOffset LastSaved { get; set; }
+
+    /// <summary>
+    /// Rueckschau je Kalendertag, aelteste zuerst. Auf <see cref="HistoryDays"/>
+    /// begrenzt, damit die Zustandsdatei nicht unbegrenzt waechst.
+    /// </summary>
+    public List<DayStat> History { get; set; } = new();
+
+    /// <summary>Wie viele Tage die Rueckschau behaelt - gut ein Jahr.</summary>
+    public const int HistoryDays = 400;
 
     public TelegramSettings Telegram { get; set; } = new();
 

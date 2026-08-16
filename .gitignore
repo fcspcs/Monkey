@@ -13,6 +13,9 @@ dist/*
 # gehoert als Secret UPDATE_SIGNING_KEY zu GitHub Actions, niemals ins Repo.
 update-key.private.pem
 
+# Internes Planungswissen (macOS-Port-Recherche) - lokal, nicht im Repo.
+MACOS-PORT-PLAN.md
+
 # .NET / Rider / VS
 *.user
 .vs/

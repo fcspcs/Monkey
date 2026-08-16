@@ -1,4 +1,8 @@
-# Telegram remote control — setup guide
+# Telegram remote control — advanced manual setup
+
+The recommended setup now lives in Monkey's **Telegram** tab and deploys this
+Worker automatically. Use this document only when you deliberately want to
+manage the Worker yourself or the guided deployment cannot be used.
 
 Monkey can talk to **two Telegram bots**, and it keeps answering **even while
 the PC is off**:
@@ -18,7 +22,7 @@ credentials live in this repository. The worker stores the last reported state
 and, since the daily top-up is completely predictable, it answers *exactly*
 even days after the PC last reported in.
 
-## Setup (about ten minutes, once)
+## Manual setup
 
 1. **Two bots:** message [@BotFather](https://t.me/BotFather) in Telegram,
    send `/newbot` twice (one bot for Monkey, one for the friend) and keep both
@@ -28,17 +32,20 @@ even days after the PC last reported in.
    [dash.cloudflare.com](https://dash.cloudflare.com) → *Workers & Pages* →
    *Create Worker* → paste the contents of [`worker.js`](worker.js) →
    *Deploy*. Note the `https://….workers.dev` URL.
-3. **Two settings on the worker:** under *Settings* add a **KV namespace
-   binding** named `KV`, and a **secret** named `SYNC_SECRET` — its value
-   comes from the next step.
-4. **Connect:** open Monkey's control panel → **Telegram** tab. Click
-   *Generate* to create the sync secret (copy it into `SYNC_SECRET` on the
-   worker first), enter the worker URL and both bot tokens, type the master
-   password and hit *Save & connect*.
+3. **Bindings:** under *Settings* add a **KV namespace binding** named `KV`.
+   Add these five values as **encrypted secrets**, never as plain variables:
+   `SYNC_SECRET`, `MONKEY_BOT_TOKEN`, `FRIEND_BOT_TOKEN`,
+   `MONKEY_WEBHOOK_SECRET`, `FRIEND_WEBHOOK_SECRET`. The control panel's
+   *Generate* button creates `SYNC_SECRET`; use independent random hexadecimal
+   values of at least 32 characters for both webhook secrets.
+4. **Connect:** open Monkey's control panel → **Telegram** tab, enter the Worker
+   URL and the same `SYNC_SECRET`, type the master password and select
+   *Connect existing Worker*. The Worker registers the webhooks from its secret
+   bindings. Bot and webhook tokens never enter KV.
 5. **Pairing:** still in the Telegram tab, create a one-time code per bot;
    each person sends `/pair CODE` to *their* bot. Done.
 
-Prefer the command line? [`wrangler.toml`](wrangler.toml) has the three
+Prefer the command line? [`wrangler.toml`](wrangler.toml) lists the required
 Wrangler commands in its header.
 
 ## What keeps this safe
@@ -49,9 +56,10 @@ Wrangler commands in its header.
 - The worker can only do what the service explicitly allows: add time (within
   the per-go top-up limit), pause, resume. It cannot change settings or
   passwords, and it cannot unlock or remove Monkey.
-- The bot tokens are handed to **your** worker once during setup and are not
-  kept on the PC; the sync secret is stored DPAPI-encrypted so that even an
-  administrator reading the state file only sees ciphertext.
+- The bot and webhook tokens are encrypted **Cloudflare secret bindings** and
+  never KV values. They are not kept on the PC; the sync secret is stored
+  DPAPI-encrypted so that an administrator merely reading the state file sees
+  ciphertext.
 - Every path is authenticated: the PC proves itself to the worker with the
   sync secret, Telegram proves itself with per-bot webhook secrets, and chats
   prove themselves once with a pairing code (5 tries, 10 minutes, then it
@@ -59,6 +67,9 @@ Wrangler commands in its header.
 
 ## Turning it off
 
-Disconnect in the Telegram tab — that removes both webhooks and wipes the
-worker's stored tokens, state and command queue. Or never set it up: with an
-empty Telegram tab, Monkey behaves exactly as if none of this existed.
+The Telegram tab offers two choices. **Disconnect only** removes both webhooks
+and wipes KV state and commands but leaves the Worker and its secret bindings
+in Cloudflare. **Remove Worker & data** additionally uses a fresh one-time API
+token to delete that managed Worker, all its secret bindings and its dedicated
+KV store. With an empty Telegram tab, Monkey behaves exactly as if none of this
+existed.

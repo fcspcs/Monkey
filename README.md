@@ -61,6 +61,11 @@ you trust. Then "just five more minutes" isn't an argument with yourself at 1am.
 - **Counts fairly.** The clock stops while the session is locked, the
   screensaver is on or the display has switched itself off, and sleep costs
   you nothing.
+- **Shows you the pattern.** The control panel's **Statistics** page charts screen
+  time per day, how the banked balance rose and fell, or which weekdays actually
+  cost you — one chart at a time, over the last 7, 30 or 90 days, with the plain
+  numbers one click away. The service keeps a year of daily totals; nothing leaves
+  the PC.
 - **Doesn't let itself be switched off in passing.** The service guards itself
   and puts its locks back after every start.
 
@@ -137,11 +142,21 @@ Check the balance and top up from your phone — **even while the PC is off**:
 - **The friend's bot** can also add time, pause and resume — remote control
   without the master password ever leaving the PC.
 
-It runs through a tiny relay you deploy into your **own free Cloudflare
-account** — this project hosts nothing, and the repository contains no
-credentials.
+It runs through a tiny relay in your **own free Cloudflare account** — this
+project hosts nothing. Open the control panel's **Telegram** tab: its assistant
+opens BotFather, deploys the Worker and KV store, installs the secret, connects
+both bots and walks through pairing. Cloudflare and bot credentials are used
+once and are not stored on the PC. Bot tokens and webhook keys are encrypted
+Cloudflare **secret bindings**, never ordinary KV values.
 
-**[→ Setup guide (about ten minutes)](cloud/README.md)**
+The same tab checks the deployed Worker version and safely updates its code.
+Updates preserve pairings, the last status and queued commands. Monkey asks for
+a fresh, revocable Cloudflare token for each deployment or update and never
+keeps that token. A complete removal button deletes the exact managed Worker,
+its secret bindings and its dedicated KV store.
+
+The old manual/Wrangler route remains available as an
+**[advanced fallback](cloud/README.md)**.
 
 Don't want it? Leave the Telegram tab in the control panel empty and nothing
 changes.
@@ -157,18 +172,23 @@ is **newer** and **signed with the project's update key**, so a doctored
 "update" can't be used to sneak past the limit — not even by someone who
 controls the network.
 
-Turn it off any time in the control panel. Maintainers and forks: the feature
-sleeps until a signing key exists — `pwsh tools/new-update-key.ps1` walks you
-through it.
+Turn it off any time in the control panel. Maintainers and forks must configure
+the signing key once before publishing — `powershell -ExecutionPolicy Bypass -File tools/new-update-key.ps1` walks
+through it, and the release workflow refuses to publish an unsigned update.
 
 ---
 
 **Being honest about how far this goes:** on Windows a local administrator isn't
-a security boundary — that's Microsoft's own position, and no program without a
-signed kernel driver changes it (commercial tools included). So Monkey leans on
-lots of small locks that keep putting each other back up. Getting around it is
-possible, but it takes deliberate effort rather than a moment of weakness. That's
-exactly the bar we're aiming for.
+a security boundary. An administrator can ask Task Scheduler to run arbitrary
+code as `LocalSystem`, which is also the identity used by Monkey's service. No ACL
+inside Monkey can distinguish those two uses of the same identity. The locks here
+therefore prevent casual or accidental shutdown; they cannot safely promise more.
+
+For an actual boundary, use a **standard Windows account day to day** and keep the
+credentials of a separate administrator account with the person who holds the
+Monkey master password. Keep BitLocker and Secure Boot enabled as well, otherwise
+offline boot media can bypass the Windows account boundary. Developers who need
+administrator access should treat Monkey as tamper-resistant, not tamper-proof.
 
 ---
 
@@ -177,11 +197,14 @@ exactly the bar we're aiming for.
 ```powershell
 git clone https://github.com/fcspcs/Monkey.git
 cd Monkey
+.\test.ps1      # runs the test suite (engine, protocol, Telegram relay)
 .\build.ps1     # produces dist\MonkeySetup.exe
 ```
 
-Needs the .NET 8 SDK. The installer in `dist/` is rebuilt automatically on every
-change, and pushing a tag like `v1.1` publishes it as a release (GitHub Actions).
+Needs the .NET 8 SDK (plus Node.js for the Telegram relay tests). The installer
+in `dist/` is rebuilt automatically on every change, and pushing a tag like
+`v1.1` publishes it as a release (GitHub Actions) - both only after the same
+tests have passed.
 
 ---
 

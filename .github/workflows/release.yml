@@ -75,19 +75,25 @@ jobs:
 
       - name: Build installer
         shell: pwsh
-        run: ./build.ps1 -Version $env:RELEASE_VERSION
+        run: |
+          node --check cloud/worker.js
+          node cloud/worker.test.mjs
+          dotnet test src/Monkey.Tests/Monkey.Tests.csproj -c Release --nologo
+          ./build.ps1 -Version $env:RELEASE_VERSION
 
-      # Signiert das Update-Manifest fuer die Selbstaktualisierung. Ohne den
-      # Secret UPDATE_SIGNING_KEY (siehe tools/new-update-key.ps1) erscheint das
-      # Release ohne update.json - installierte Fassungen ruehren es dann nicht an.
+      # Signiert das Update-Manifest fuer die Selbstaktualisierung. Ein Release
+      # ohne Schluessel waere zwar herunterladbar, aber fuer bestehende
+      # Installationen unsichtbar. Deshalb fail-closed statt still auslassen.
       - name: Sign the update manifest
         shell: pwsh
         env:
           UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
         run: |
+          if (-not (Test-Path 'assets/update-key.pem')) {
+            throw 'assets/update-key.pem is missing. Run powershell -ExecutionPolicy Bypass -File tools/new-update-key.ps1 once and commit the public key.'
+          }
           if (-not $env:UPDATE_SIGNING_KEY) {
-            Write-Host "No UPDATE_SIGNING_KEY secret - publishing without update.json (no auto-update to this release)."
-            exit 0
+            throw 'GitHub secret UPDATE_SIGNING_KEY is missing. Refusing to publish a release without automatic updates.'
           }
 
           $sha = (Get-FileHash dist/MonkeySetup.exe -Algorithm SHA256).Hash.ToLowerInvariant()

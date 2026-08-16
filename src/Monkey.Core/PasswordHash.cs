@@ -9,6 +9,7 @@ namespace Monkey.Core;
 /// </summary>
 public static class PasswordHash
 {
+    public const int MinimumLength = 10;
     public const int DefaultIterations = 600_000;
     private const int SaltBytes = 16;
     private const int KeyBytes = 32;

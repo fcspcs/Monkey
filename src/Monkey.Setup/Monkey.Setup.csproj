@@ -26,6 +26,12 @@
     <Resource Include="..\..\assets\monkey.png" Link="Assets\monkey.png" />
   </ItemGroup>
 
+  <!-- Dasselbe Aussehen wie das Steuerpult - siehe Monkey.Agent.csproj. -->
+  <ItemGroup>
+    <Compile Include="..\Monkey.Ui\ChromeWindow.cs" Link="ChromeWindow.cs" />
+    <Page Include="..\Monkey.Ui\Theme.xaml" Link="Theme.xaml" />
+  </ItemGroup>
+
   <!--
     Dienst und Agent werden als je eine Einzeldatei-Exe in den Installer
     eingebettet. build.ps1 legt sie vorher unter payload\ ab; ohne diese Dateien

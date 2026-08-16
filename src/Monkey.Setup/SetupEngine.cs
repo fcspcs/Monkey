@@ -31,6 +31,18 @@ internal static class SetupEngine
         return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
     }
 
+    /// <summary>
+    /// Der stille Updater wird vom laufenden Dienst gestartet und erbt deshalb
+    /// dessen LocalSystem-Token. Ein bloss erhoehter Administrator darf diesen
+    /// passwortlosen Sonderweg nicht von Hand aufrufen.
+    /// </summary>
+    public static bool IsLocalSystem()
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        var system = new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null);
+        return identity.User == system;
+    }
+
     public static bool HasPayload()
     {
         var names = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceNames();
@@ -38,6 +50,19 @@ internal static class SetupEngine
     }
 
     public static bool ServiceInstalled() => ServiceKeyExists(ServiceName);
+
+    /// <summary>
+    /// Erkennt auch eine beschaedigte oder nur teilweise entfernte Installation.
+    /// Unlesbarer Zustand darf nie wie "frisch installiert" behandelt werden,
+    /// sonst waere das Beschaedigen der Zustandsdatei ein Passwort-Bypass.
+    /// </summary>
+    public static bool InstallationPresent() =>
+        ServiceInstalled()
+        || Directory.Exists(TargetDir)
+        || Directory.Exists(Paths.DataDir)
+        || ProcessExists("MonkeyService")
+        || ProcessExists("MonkeyAgent")
+        || WatchdogInstalled();
 
     /// <summary>Laeuft noch der Dienst der Vorgaengerversion "TimeGuard"?</summary>
     public static bool LegacyInstalled() => ServiceKeyExists(LegacyServiceName);
@@ -91,8 +116,20 @@ internal static class SetupEngine
 
     public sealed record InstallOptions(string Password, int DailyMinutes, int CapMinutes, int MaxGrantMinutes);
 
-    public static void Install(InstallOptions options, Action<string> report)
+    public static bool Install(
+        InstallOptions options,
+        string? currentPassword,
+        Action<string> report,
+        out string error)
     {
+        error = string.Empty;
+
+        // Noch einmal direkt vor der Aenderung pruefen. Die Anzeige im Wizard ist
+        // nur Komfort und darf nicht die Sicherheitsentscheidung treffen.
+        if (InstallationPresent()
+            && !AuthorizeExistingInstallation(currentPassword, report, out error))
+            return false;
+
         report("Clearing out leftovers from an earlier install …");
         CleanForFreshInstall(report);
 
@@ -117,6 +154,7 @@ internal static class SetupEngine
         TryStartAgent();
 
         report("Done.");
+        return true;
     }
 
     // ------------------------------------------------------------- Aktualisieren
@@ -134,6 +172,31 @@ internal static class SetupEngine
 
         try
         {
+            if (!IsLocalSystem())
+            {
+                error = "silent updates may only be started by the Monkey service";
+                return false;
+            }
+
+            // Der Dienst legt ausschliesslich diese Datei nach erfolgreicher
+            // Signatur- und Hashpruefung ab. Ein beliebiger Installer mit dem
+            // undokumentierten 'update'-Argument ist kein Updatepfad.
+            var expectedPath = Path.GetFullPath(Path.Combine(Paths.DataDir, "update", "MonkeySetup.exe"));
+            var actualPath = Environment.ProcessPath is { } processPath
+                ? Path.GetFullPath(processPath)
+                : string.Empty;
+            if (!string.Equals(actualPath, expectedPath, StringComparison.OrdinalIgnoreCase))
+            {
+                error = "silent update was not started from the protected staging directory";
+                return false;
+            }
+
+            if (!ServiceInstalled())
+            {
+                error = "no installed Monkey service found";
+                return false;
+            }
+
             if (!HasPayload())
             {
                 error = "installer payload missing";
@@ -225,33 +288,22 @@ internal static class SetupEngine
     {
         error = string.Empty;
 
+        if (!InstallationPresent())
+        {
+            report("No installation found.");
+            report("Done.");
+            return true;
+        }
+
+        if (!AuthorizeExistingInstallation(password, report, out error))
+            return false;
+
         if (ServiceInstalled())
         {
-            report("Contacting the service …");
-            EnsureServiceRunning();
-
-            report("Unlocking …");
-            var response = SendUnlock(password);
-            if (response is null)
-            {
-                error = "The service is not responding. Without it running, the unlock can't be triggered.";
-                return false;
-            }
-            if (!response.Ok)
-            {
-                error = response.Message ?? "Rejected.";
-                return false;
-            }
-
-            Thread.Sleep(1000);
             report("Stopping and removing the service …");
             Sc("stop", ServiceName);
             Thread.Sleep(2000);
             Sc("delete", ServiceName);
-        }
-        else
-        {
-            report("No service found - clearing leftovers …");
         }
 
         report("Closing the display …");
@@ -267,6 +319,64 @@ internal static class SetupEngine
         }
 
         report("Done.");
+        return true;
+    }
+
+    /// <summary>
+    /// Autorisiert Ersetzen oder Entfernen fail-closed. Solange der Dienst lebt,
+    /// prueft ausschliesslich er das Passwort und hebt danach seine Sperren auf.
+    /// Bei echten Resten ohne Dienst bleibt nur die lokale Hashpruefung; fehlt
+    /// auch dieser Beleg oder ist er unlesbar, wird nichts geloescht.
+    /// </summary>
+    private static bool AuthorizeExistingInstallation(
+        string? password,
+        Action<string> report,
+        out string error)
+    {
+        error = string.Empty;
+        if (string.IsNullOrEmpty(password))
+        {
+            error = "The current master password is required to replace or remove this installation.";
+            return false;
+        }
+
+        if (ServiceInstalled())
+        {
+            report("Contacting the existing service …");
+            EnsureServiceRunning();
+
+            report("Unlocking the existing installation …");
+            var response = SendUnlock(password);
+            if (response is null)
+            {
+                error = "The service is not responding. Without it, the protected installation won't be changed.";
+                return false;
+            }
+            if (!response.Ok)
+            {
+                error = response.Message ?? "The existing service rejected the request.";
+                return false;
+            }
+
+            Thread.Sleep(1000);
+            return true;
+        }
+
+        report("Checking the protected installation remnants …");
+        var state = TryReadExistingState();
+        if (state is not { HasPassword: true })
+        {
+            error = "Protected Monkey remnants were found, but their master-password state is missing or unreadable. " +
+                    "Setup stopped without changing them.";
+            return false;
+        }
+
+        if (!PasswordHash.Verify(password, state.PasswordHash, state.PasswordSalt, state.PasswordIterations))
+        {
+            error = "That's not the current master password.";
+            return false;
+        }
+
         return true;
     }
 
@@ -286,6 +396,40 @@ internal static class SetupEngine
         {
             try { NativeSecurity.ForceDelete(dir); }
             catch (Exception ex) { report($"Note: '{dir}' could not be fully removed ({ex.Message})."); }
+        }
+    }
+
+    private static bool WatchdogInstalled()
+    {
+        try
+        {
+            var info = new ProcessStartInfo
+            {
+                FileName = "schtasks.exe",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            info.ArgumentList.Add("/Query");
+            info.ArgumentList.Add("/TN");
+            info.ArgumentList.Add("Monkey Watchdog");
+
+            using var process = Process.Start(info);
+            if (process is null) return false;
+            process.WaitForExit(15000);
+            return process.ExitCode == 0;
+        }
+        catch { return false; }
+    }
+
+    private static bool ProcessExists(string name)
+    {
+        var processes = Process.GetProcessesByName(name);
+        try { return processes.Length > 0; }
+        finally
+        {
+            foreach (var process in processes) process.Dispose();
         }
     }
 

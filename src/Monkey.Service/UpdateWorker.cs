@@ -40,6 +40,9 @@ internal sealed class UpdateWorker(GuardEngine engine) : BackgroundService
 
     public static string CurrentVersionText { get; } = CurrentVersion().ToString();
 
+    public static bool SignedUpdatesAvailable =>
+        typeof(UpdateWorker).Assembly.GetManifestResourceInfo("update-key.pem") is not null;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         CleanupLeftovers();

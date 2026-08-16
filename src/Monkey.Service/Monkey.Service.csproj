@@ -35,4 +35,14 @@
                       LogicalName="update-key.pem" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Der optionale Telegram-Worker wird vom Control Panel direkt in das
+         Cloudflare-Konto des Nutzers geladen. -->
+    <EmbeddedResource Include="..\..\cloud\worker.js" LogicalName="telegram-worker.js" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Monkey.Tests" />
+  </ItemGroup>
+
 </Project>

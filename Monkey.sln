@@ -1,4 +1,4 @@
-Microsoft Visual Studio Solution File, Format Version 12.00
+﻿Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
@@ -9,6 +9,10 @@ EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Monkey.Agent", "src\Monkey.Agent\Monkey.Agent.csproj", "{4A1C0001-0000-4000-8000-000000000003}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Monkey.Setup", "src\Monkey.Setup\Monkey.Setup.csproj", "{4A1C0001-0000-4000-8000-000000000004}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{AAE749C9-97D0-4F54-9088-C7DF0C324177}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Monkey.Tests", "src\Monkey.Tests\Monkey.Tests.csproj", "{0DB8CCE7-5E6A-4128-952A-61FFAEB6D70B}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -32,8 +36,15 @@ Global
 		{4A1C0001-0000-4000-8000-000000000004}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4A1C0001-0000-4000-8000-000000000004}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4A1C0001-0000-4000-8000-000000000004}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0DB8CCE7-5E6A-4128-952A-61FFAEB6D70B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0DB8CCE7-5E6A-4128-952A-61FFAEB6D70B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0DB8CCE7-5E6A-4128-952A-61FFAEB6D70B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0DB8CCE7-5E6A-4128-952A-61FFAEB6D70B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{0DB8CCE7-5E6A-4128-952A-61FFAEB6D70B} = {AAE749C9-97D0-4F54-9088-C7DF0C324177}
 	EndGlobalSection
 EndGlobal

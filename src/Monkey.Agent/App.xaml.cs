@@ -32,7 +32,12 @@ public partial class App : Application
     private string _overlayColor = OverlayWindow.AutoLight;
     private OverlayCorner _overlayCorner = OverlayCorner.TopRight;
 
-    private static readonly (string Label, OverlayCorner Value)[] OverlayCorners =
+    /// <summary>
+    /// Die Auswahl steht hier und nicht doppelt im Steuerpult: Tray-Menue und
+    /// Anzeige-Seite sollen dieselben Moeglichkeiten anbieten, sonst hat man
+    /// zwei Wahrheiten.
+    /// </summary>
+    internal static readonly (string Label, OverlayCorner Value)[] OverlayCorners =
     [
         ("Top left", OverlayCorner.TopLeft),
         ("Top right", OverlayCorner.TopRight),
@@ -41,7 +46,7 @@ public partial class App : Application
     ];
     private int? _lastWarningShown;
 
-    private static readonly (string Label, string Value)[] OverlayColors =
+    internal static readonly (string Label, string Value)[] OverlayColors =
     [
         ("Automatic, light", OverlayWindow.AutoLight),
         ("Automatic, dark", OverlayWindow.AutoDark),
@@ -79,19 +84,10 @@ public partial class App : Application
             return;
         }
 
-        _overlayVisible = AgentSettings.OverlayVisible;
-
-        _overlayBackground = AgentSettings.OverlayBackground;
-        _overlayColor = AgentSettings.OverlayColor;
-
-        _overlayCorner = AgentSettings.OverlayCorner;
-
-        _overlay = new OverlayWindow { CountUp = AgentSettings.CountUp };
-        _overlay.SetCorner(_overlayCorner);
-        _overlay.ApplyPreferences(_overlayBackground, _overlayColor);
+        _overlay = new OverlayWindow();
         _overlay.Clicked += (_, _) => OpenMaster();
         _overlay.Show();
-        if (!_overlayVisible) _overlay.Hide();
+        ApplyDisplayPreferences();
 
         RegisterHotkey();
         BuildTray();
@@ -199,9 +195,74 @@ public partial class App : Application
 
     // ---------------------------------------------------------------- Tray
 
+    /// <summary>
+    /// Farben fuer das Kontextmenue im Infobereich. WinForms zeichnet Menues
+    /// sonst mit den Verlaeufen von 2005; hier bekommt es dieselbe flache, helle
+    /// Palette wie die WPF-Fenster (siehe Theme.xaml).
+    /// </summary>
+    private sealed class TrayMenuColors : Forms::ProfessionalColorTable
+    {
+        private static Drawing::Color Rgb(int value) =>
+            Drawing::Color.FromArgb(value >> 16 & 0xFF, value >> 8 & 0xFF, value & 0xFF);
+
+        private static readonly Drawing::Color Surface = Rgb(0xFFFFFF);
+        private static readonly Drawing::Color Edge = Rgb(0xDDD2C6);
+        private static readonly Drawing::Color Highlight = Rgb(0xFBF1ED);
+        private static readonly Drawing::Color Pressed = Rgb(0xF4E1D8);
+        private static readonly Drawing::Color Divider = Rgb(0xEDE6DE);
+
+        public override Drawing::Color ToolStripDropDownBackground => Surface;
+        public override Drawing::Color MenuBorder => Edge;
+
+        // Die Randspalte fuer Symbole faellt weg - ohne diese drei bliebe sonst
+        // ein grauer Streifen am linken Rand stehen.
+        public override Drawing::Color ImageMarginGradientBegin => Surface;
+        public override Drawing::Color ImageMarginGradientMiddle => Surface;
+        public override Drawing::Color ImageMarginGradientEnd => Surface;
+
+        public override Drawing::Color MenuItemSelected => Highlight;
+        public override Drawing::Color MenuItemBorder => Highlight;
+        public override Drawing::Color MenuItemSelectedGradientBegin => Highlight;
+        public override Drawing::Color MenuItemSelectedGradientEnd => Highlight;
+        public override Drawing::Color MenuItemPressedGradientBegin => Pressed;
+        public override Drawing::Color MenuItemPressedGradientMiddle => Pressed;
+        public override Drawing::Color MenuItemPressedGradientEnd => Pressed;
+
+        public override Drawing::Color CheckBackground => Pressed;
+        public override Drawing::Color CheckSelectedBackground => Pressed;
+        public override Drawing::Color CheckPressedBackground => Pressed;
+
+        public override Drawing::Color SeparatorDark => Divider;
+        public override Drawing::Color SeparatorLight => Surface;
+    }
+
+    /// <summary>
+    /// Gilt auch fuer die Untermenues: die entstehen erst beim Aufklappen und
+    /// holen sich ihren Zeichner beim Manager.
+    /// </summary>
+    private static void UseFlatMenus() =>
+        Forms::ToolStripManager.Renderer =
+            new Forms::ToolStripProfessionalRenderer(new TrayMenuColors()) { RoundedEdges = false };
+
+    /// <summary>Etwas Luft und die Systemschrift - sonst klebt alles aneinander.</summary>
+    private static T Roomy<T>(T menu) where T : Forms::ToolStripDropDownMenu
+    {
+        menu.ShowImageMargin = false;
+        menu.ShowCheckMargin = true;
+        menu.Font = new Drawing::Font("Segoe UI", 9f);
+        menu.Padding = new Forms::Padding(0, 4, 0, 4);
+
+        foreach (Forms::ToolStripItem item in menu.Items)
+            item.Padding = new Forms::Padding(2, 4, 2, 4);
+
+        return menu;
+    }
+
     private void BuildTray()
     {
-        var menu = new Forms::ContextMenuStrip();
+        UseFlatMenus();
+
+        var menu = new Forms::ContextMenuStrip { DropShadowEnabled = true };
 
         var header = new Forms::ToolStripMenuItem("Time left: --") { Enabled = false };
         menu.Items.Add(header);
@@ -218,6 +279,10 @@ public partial class App : Application
         var toggleBackground = new Forms::ToolStripMenuItem("Hide background");
         toggleBackground.Click += (_, _) => ToggleBackground();
         menu.Items.Add(toggleBackground);
+
+        var toggleHoverIcon = new Forms::ToolStripMenuItem("Hide monkey on hover");
+        toggleHoverIcon.Click += (_, _) => ToggleHoverIcon();
+        menu.Items.Add(toggleHoverIcon);
 
         var cornerMenu = new Forms::ToolStripMenuItem("Screen corner");
         foreach (var (label, value) in OverlayCorners)
@@ -252,6 +317,10 @@ public partial class App : Application
         quit.Click += (_, _) => QuitAgent();
         menu.Items.Add(quit);
 
+        Roomy(menu);
+        Roomy((Forms::ToolStripDropDownMenu)cornerMenu.DropDown);
+        Roomy((Forms::ToolStripDropDownMenu)colorMenu.DropDown);
+
         menu.Opening += (_, _) =>
         {
             header.Text = _status is null
@@ -264,6 +333,7 @@ public partial class App : Application
                 ? "Count time left instead"
                 : "Count time used instead";
             toggleBackground.Text = _overlayBackground ? "Hide background" : "Show background";
+            toggleHoverIcon.Text = AgentSettings.HoverIcon ? "Hide monkey on hover" : "Show monkey on hover";
 
             foreach (Forms::ToolStripMenuItem item in colorMenu.DropDownItems)
                 item.Checked = string.Equals(item.Tag as string, _overlayColor, StringComparison.OrdinalIgnoreCase);
@@ -335,6 +405,39 @@ public partial class App : Application
 
     // ------------------------------------------------------------- Aktionen
 
+    /// <summary>
+    /// Liest alle Anzeigevorlieben aus der Registrierung und legt sie auf das
+    /// Overlay. Tray-Menue und Anzeige-Seite schreiben beide nur dorthin und
+    /// rufen anschliessend hier an - so gibt es genau eine Stelle, die weiss,
+    /// wie eine Vorliebe wirksam wird.
+    /// </summary>
+    internal void ApplyDisplayPreferences()
+    {
+        _overlayVisible = AgentSettings.OverlayVisible;
+        _overlayBackground = AgentSettings.OverlayBackground;
+        _overlayColor = AgentSettings.OverlayColor;
+        _overlayCorner = AgentSettings.OverlayCorner;
+
+        if (_overlay is null) return;
+
+        _overlay.CountUp = AgentSettings.CountUp;
+        _overlay.ShowHoverIcon = AgentSettings.HoverIcon;
+        _overlay.SetCorner(_overlayCorner);
+        _overlay.ApplyPreferences(_overlayBackground, _overlayColor);
+
+        if (_overlayVisible)
+        {
+            _overlay.Show();
+            _overlay.KeepOnTop();
+        }
+        else
+        {
+            _overlay.Hide();
+        }
+
+        _overlay.Render(_status);
+    }
+
     private void ToggleOverlay()
     {
         if (_overlay is null) return;
@@ -369,6 +472,12 @@ public partial class App : Application
         _overlay?.ApplyPreferences(_overlayBackground, _overlayColor);
     }
 
+    private void ToggleHoverIcon()
+    {
+        AgentSettings.HoverIcon = !AgentSettings.HoverIcon;
+        ApplyDisplayPreferences();
+    }
+
     private void SetOverlayColor(string value)
     {
         _overlayColor = value;
@@ -392,6 +501,7 @@ public partial class App : Application
         }
 
         _master = new MasterWindow();
+        _master.DisplayPreferencesChanged += (_, _) => ApplyDisplayPreferences();
         _master.Closed += (_, _) => _master = null;
         _master.Show();
         _master.Activate();

@@ -47,6 +47,16 @@ internal static class AgentSettings
         set => WriteString(nameof(OverlayColor), value);
     }
 
+    /// <summary>
+    /// Faehrt der Affe heraus, wenn der Zeiger auf dem Overlay steht? Standard
+    /// an - es ist die einzige Stelle, an der das Programm Laune zeigt.
+    /// </summary>
+    public static bool HoverIcon
+    {
+        get => ReadBool(nameof(HoverIcon), true);
+        set => WriteBool(nameof(HoverIcon), value);
+    }
+
     /// <summary>In welcher Bildschirmecke das Overlay sitzt.</summary>
     public static OverlayCorner OverlayCorner
     {

@@ -31,6 +31,20 @@
   </ItemGroup>
 
   <!--
+    Aussehen und Fensterrahmen teilen sich Steuerpult und Installer. Beide
+    Dateien liegen unter src\Monkey.Ui und werden hier nur verknuepft - ein
+    eigenes Projekt waere fuer zwei Dateien zu viel Umstand, und kopieren
+    wuerde bedeuten, jede Farbe zweimal zu pflegen.
+  -->
+  <ItemGroup>
+    <Compile Include="..\Monkey.Ui\ChromeWindow.cs" Link="ChromeWindow.cs" />
+    <Page Include="..\Monkey.Ui\Theme.xaml" Link="Theme.xaml" />
+
+    <!-- Nur das Steuerpult zeichnet Diagramme; der Installer braucht sie nicht. -->
+    <Compile Include="..\Monkey.Ui\Charts.cs" Link="Charts.cs" />
+  </ItemGroup>
+
+  <!--
     UseWindowsForms zieht System.Drawing und System.Windows.Forms als globale
     Usings herein und macht damit Color, Brush und Application mehrdeutig.
     Das Projekt ist WPF mit einem Tray-Symbol aus WinForms - also raus damit und

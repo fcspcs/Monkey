@@ -7,8 +7,9 @@
  *   - SYNC_SECRET   Worker secret (Settings → Variables and Secrets). Generated
  *                   in Monkey's control panel, Telegram tab.
  *   - KV            A KV namespace binding named "KV" (Settings → Bindings).
- *   - Bot tokens    Entered in Monkey's control panel; the PC hands them to
- *                   this worker once during setup and does not keep them.
+ *   - Bot tokens    Stored as encrypted Cloudflare secret bindings. They never
+ *                   live in KV and the PC does not retain them after setup.
+ *   - Webhook keys  Stored as encrypted Cloudflare secret bindings as well.
  *
  * Security model, in short: the PC authenticates to this worker with the sync
  * secret (Bearer). Telegram authenticates its webhooks with per-bot secret
@@ -21,6 +22,7 @@
 
 const TOKEN_RE = /^\d{5,12}:[A-Za-z0-9_-]{30,64}$/;
 const HOOK_SECRET_RE = /^[A-Za-z0-9_-]{16,128}$/;
+const WORKER_VERSION = 2;
 const MAX_QUEUE = 20;
 const MAX_CHATS_PER_ROLE = 4;
 const ONLINE_WINDOW_MS = 90_000; // letzter Sync juenger als das => PC gilt als an
@@ -43,15 +45,17 @@ async function route(request, env) {
   if (request.method === 'GET' && path === '/')
     return new Response('Monkey Telegram relay is running.', { status: 200 });
 
-  if (request.method !== 'POST') return json({ error: 'method not allowed' }, 405);
-
   // Telegram-Webhooks authentifizieren sich per secret_token, nicht per Bearer.
-  if (path === '/tg/monkey') return telegramUpdate(request, env, 'monkey');
-  if (path === '/tg/friend') return telegramUpdate(request, env, 'friend');
+  if (request.method === 'POST' && path === '/tg/monkey') return telegramUpdate(request, env, 'monkey');
+  if (request.method === 'POST' && path === '/tg/friend') return telegramUpdate(request, env, 'friend');
 
   // Alles weitere ist der PC — nur mit dem Sync-Secret.
   if (!(await authorized(request, env))) return json({ error: 'unauthorized' }, 401);
 
+  if (request.method === 'GET' && path === '/info')
+    return json({ version: WORKER_VERSION, secretBindings: true });
+
+  if (request.method !== 'POST') return json({ error: 'method not allowed' }, 405);
   if (path === '/provision') return provision(request, env, url.origin);
   if (path === '/pair') return pairSetup(request, env);
   if (path === '/sync') return sync(request, env);
@@ -69,29 +73,35 @@ async function authorized(request, env) {
   return safeEqual(header.slice(7).trim(), env.SYNC_SECRET);
 }
 
-/** Tokens und Webhook-Geheimnisse entgegennehmen, beide Webhooks registrieren. */
+/** Secret-Bindings pruefen, beide Webhooks registrieren und altes KV migrieren. */
 async function provision(request, env, origin) {
   const body = await readJson(request);
   if (!body) return json({ error: 'bad request' }, 400);
 
-  const { monkeyToken, friendToken, monkeyWebhookSecret, friendWebhookSecret } = body;
+  const monkeyToken = env.MONKEY_BOT_TOKEN;
+  const friendToken = env.FRIEND_BOT_TOKEN;
+  const monkeyWebhookSecret = env.MONKEY_WEBHOOK_SECRET;
+  const friendWebhookSecret = env.FRIEND_WEBHOOK_SECRET;
   if (!TOKEN_RE.test(monkeyToken || '') || !TOKEN_RE.test(friendToken || ''))
-    return json({ error: 'a bot token looks invalid' }, 400);
+    return json({ error: 'a bot-token secret binding is missing or invalid' }, 500);
   if (!HOOK_SECRET_RE.test(monkeyWebhookSecret || '') || !HOOK_SECRET_RE.test(friendWebhookSecret || ''))
-    return json({ error: 'a webhook secret looks invalid' }, 400);
+    return json({ error: 'a webhook secret binding is missing or invalid' }, 500);
   if (monkeyToken === friendToken)
-    return json({ error: 'the two bots must be different' }, 400);
+    return json({ error: 'the two bot-token bindings must be different' }, 500);
 
-  // Bestehende Pairings ueberleben eine Neueinrichtung nur, wenn der jeweilige
-  // Bot derselbe geblieben ist — ein neuer Bot faengt bei null an.
+  // Keine Geheimnisse in KV: Nur Hash-Fingerabdruecke entscheiden, ob Pairings
+  // bei einer Aktualisierung zum selben Bot gehoeren. Die old.*Token-Pruefung
+  // migriert Worker v1, ohne die bestehenden Pairings zu verlieren.
   const old = (await env.KV.get('config', 'json')) || {};
+  const monkeyTokenHash = await sha256hex(monkeyToken);
+  const friendTokenHash = await sha256hex(friendToken);
   const config = {
-    monkeyToken,
-    friendToken,
-    monkeyHookSecret: monkeyWebhookSecret,
-    friendHookSecret: friendWebhookSecret,
-    monkeyChats: old.monkeyToken === monkeyToken ? old.monkeyChats || [] : [],
-    friendChats: old.friendToken === friendToken ? old.friendChats || [] : [],
+    monkeyTokenHash,
+    friendTokenHash,
+    monkeyChats: old.monkeyToken === monkeyToken || old.monkeyTokenHash === monkeyTokenHash
+      ? old.monkeyChats || [] : [],
+    friendChats: old.friendToken === friendToken || old.friendTokenHash === friendTokenHash
+      ? old.friendChats || [] : [],
   };
 
   for (const role of ['monkey', 'friend']) {
@@ -147,8 +157,8 @@ async function sync(request, env) {
     if (!command) continue;
 
     await env.KV.delete(key);
-    if (config?.friendToken && command.chatId)
-      await tg(config.friendToken, 'sendMessage', {
+    if (config?.friendTokenHash && command.chatId)
+      await tg(env.FRIEND_BOT_TOKEN, 'sendMessage', {
         chat_id: command.chatId,
         text: `${result.ok ? '✅' : '⚠️'} ${String(result.message || '').slice(0, 300)}`,
       });
@@ -164,10 +174,9 @@ async function sync(request, env) {
   return json({ commands });
 }
 
-/** Alles vergessen: Webhooks abmelden, Tokens, Stand und Warteschlange loeschen. */
+/** Webhooks abmelden und KV leeren; Secret-Bindings loescht nur die Cloudflare-API. */
 async function reset(env) {
-  const config = await env.KV.get('config', 'json');
-  for (const token of [config?.monkeyToken, config?.friendToken])
+  for (const token of [env.MONKEY_BOT_TOKEN, env.FRIEND_BOT_TOKEN])
     if (token) await tg(token, 'deleteWebhook', { drop_pending_updates: true });
 
   await env.KV.delete('config');
@@ -185,7 +194,7 @@ async function telegramUpdate(request, env, role) {
   const config = await env.KV.get('config', 'json');
   if (!config) return ok(); // noch nicht eingerichtet — nichts verraten
 
-  const expected = role === 'monkey' ? config.monkeyHookSecret : config.friendHookSecret;
+  const expected = role === 'monkey' ? env.MONKEY_WEBHOOK_SECRET : env.FRIEND_WEBHOOK_SECRET;
   const got = request.headers.get('x-telegram-bot-api-secret-token') || '';
   if (!expected || !(await safeEqual(got, expected))) return json({ error: 'unauthorized' }, 401);
 
@@ -197,7 +206,7 @@ async function telegramUpdate(request, env, role) {
   // Nur direkte Chats. Gruppen haben hier nichts verloren.
   if (!text || typeof chatId !== 'number' || message.chat.type !== 'private') return ok();
 
-  const token = role === 'monkey' ? config.monkeyToken : config.friendToken;
+  const token = role === 'monkey' ? env.MONKEY_BOT_TOKEN : env.FRIEND_BOT_TOKEN;
   const reply = (t) => tg(token, 'sendMessage', { chat_id: chatId, text: t });
 
   const [first, arg] = text.split(/\s+/, 2);

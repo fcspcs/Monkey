@@ -81,6 +81,9 @@ public partial class OverlayWindow : Window
     /// <summary>Kasten hinter der Zahl anzeigen.</summary>
     public bool ShowBackground { get; private set; } = true;
 
+    /// <summary>Faehrt der Affe beim Hovern heraus?</summary>
+    public bool ShowHoverIcon { get; set; } = true;
+
     /// <summary>Feste Farbe der Zahl, oder null fuer die Ampel nach Restzeit.</summary>
     public Color? CustomColor { get; private set; }
 
@@ -246,7 +249,7 @@ public partial class OverlayWindow : Window
     {
         ApplyChrome();
 
-        AnimateHoverIcon(_hovering);
+        AnimateHoverIcon(_hovering && ShowHoverIcon);
 
         var status = _last;
 

@@ -11,11 +11,11 @@ namespace Monkey.Service;
 /// jedem Dienststart sowie bei jedem Watchdog-Tick alle Sperren wieder her. Wer
 /// einen Riegel entfernt, findet ihn nach spaetestens einer Minute wieder vor.
 ///
-/// Keine dieser Massnahmen macht das Tool fuer einen Administrator unentfernbar -
-/// das ist auf Windows im User-Mode nicht moeglich. Sie heben die Huerde auf das
-/// Niveau kommerzieller Zeitkontrollen, die ebenfalls ohne Kernel-Treiber
-/// auskommen: viele voneinander unabhaengige Riegel, die sich gegenseitig wieder
-/// aufrichten.
+/// Keine dieser Massnahmen macht das Tool fuer einen Administrator unentfernbar.
+/// Ein lokaler Administrator kann ueber die Windows-Aufgabenplanung beliebigen
+/// Code als LocalSystem starten und handelt dann mit derselben Identitaet wie
+/// dieser Dienst. Die Riegel verhindern beiläufiges Abschalten; eine echte Grenze
+/// entsteht erst, wenn der Alltagsbenutzer keine lokalen Admin-Zugangsdaten hat.
 /// </summary>
 internal static class SelfProtect
 {

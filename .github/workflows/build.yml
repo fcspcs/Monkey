@@ -9,6 +9,8 @@ on:
     branches: [ main ]
     paths:
       - 'src/**'
+      - 'cloud/worker.js'
+      - 'cloud/worker.test.mjs'
       - 'build.ps1'
       - '.github/workflows/build.yml'
   workflow_dispatch:
@@ -34,7 +36,11 @@ jobs:
 
       - name: Build installer
         shell: pwsh
-        run: ./build.ps1
+        run: |
+          node --check cloud/worker.js
+          node cloud/worker.test.mjs
+          dotnet test src/Monkey.Tests/Monkey.Tests.csproj -c Release --nologo
+          ./build.ps1
 
       - name: Commit the updated installer
         shell: pwsh

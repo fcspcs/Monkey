@@ -1,6 +1,10 @@
 # Nur fuer alle, die lieber die Wrangler-CLI nutzen als das Dashboard:
 #   npx wrangler kv namespace create KV     (ID unten eintragen)
 #   npx wrangler secret put SYNC_SECRET     (Wert aus Monkeys Telegram-Tab)
+#   npx wrangler secret put MONKEY_BOT_TOKEN
+#   npx wrangler secret put FRIEND_BOT_TOKEN
+#   npx wrangler secret put MONKEY_WEBHOOK_SECRET
+#   npx wrangler secret put FRIEND_WEBHOOK_SECRET
 #   npx wrangler deploy
 # Im Dashboard geht es genauso ohne diese Datei - siehe README.
 

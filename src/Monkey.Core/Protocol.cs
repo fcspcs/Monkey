@@ -6,6 +6,13 @@ public static class RequestType
 {
     public const string Status = "status";
     public const string Heartbeat = "heartbeat";
+
+    /// <summary>
+    /// Tagesverlauf fuer die Statistikseite. Bewusst ohne Passwort - wie Status
+    /// gibt er nur Auskunft und raeumt keine Befugnis ein. Es sind ausserdem die
+    /// eigenen Nutzungsdaten dessen, der davorsitzt.
+    /// </summary>
+    public const string History = "history";
     public const string Pause = "pause";
     public const string Resume = "resume";
     public const string AddTime = "addtime";
@@ -18,6 +25,10 @@ public static class RequestType
     // Optionale Telegram-Anbindung. Die Anfragen laufen wie alles andere ueber die
     // Pipe und verlangen das Master-Passwort - geprueft wird im Dienst.
     public const string TelegramSetup = "telegramsetup";
+    public const string TelegramDeploy = "telegramdeploy";
+    public const string TelegramWorkerCheck = "telegramworkercheck";
+    public const string TelegramWorkerUpdate = "telegramworkerupdate";
+    public const string TelegramWorkerRemove = "telegramworkerremove";
     public const string TelegramPair = "telegrampair";
     public const string TelegramOff = "telegramoff";
 }
@@ -47,6 +58,11 @@ public sealed class Request
     public string? SyncSecret { get; set; }
     public string? MonkeyToken { get; set; }
     public string? FriendToken { get; set; }
+
+    // Nur fuer die einmalige automatische Worker-Einrichtung. Das API-Token
+    // wird weder vom Agent noch vom Dienst gespeichert.
+    public string? CloudflareAccountId { get; set; }
+    public string? CloudflareApiToken { get; set; }
 
     /// <summary>Fuer welchen Bot ein Pairing-Code erzeugt wird: "monkey" oder "friend".</summary>
     public string? PairRole { get; set; }
@@ -98,11 +114,29 @@ public sealed class StatusDto
     /// </summary>
     public string? ServiceVersion { get; set; }
 
+    /// <summary>Enthaelt der Dienst den oeffentlichen Schluessel fuer Release-Signaturen?</summary>
+    public bool SignedUpdatesAvailable { get; set; }
+
     // Zustand der optionalen Telegram-Anbindung, nur fuer die Anzeige.
     public bool TelegramEnabled { get; set; }
     public string? TelegramWorkerHost { get; set; }
+    public bool TelegramWorkerManaged { get; set; }
+    public int? TelegramWorkerVersion { get; set; }
+    public string? TelegramCloudflareAccountId { get; set; }
     public double? TelegramLastSyncSecondsAgo { get; set; }
     public string? TelegramLastError { get; set; }
+}
+
+/// <summary>Ein Kalendertag fuer die Statistik, fertig in Minuten.</summary>
+public sealed class DayStatDto
+{
+    public DateOnly Date { get; set; }
+    public double UsedMinutes { get; set; }
+    public double GrantedMinutes { get; set; }
+    public double AddedMinutes { get; set; }
+    public double RemovedMinutes { get; set; }
+    public double BalanceEndMinutes { get; set; }
+    public double EarnedEndMinutes { get; set; }
 }
 
 public sealed class Response
@@ -110,6 +144,9 @@ public sealed class Response
     public bool Ok { get; set; }
     public string? Message { get; set; }
     public StatusDto? Status { get; set; }
+
+    /// <summary>Nur bei <see cref="RequestType.History"/> gefuellt, aelteste zuerst.</summary>
+    public List<DayStatDto>? History { get; set; }
 
     public static Response Fail(string message) => new() { Ok = false, Message = message };
     public static Response Success(string? message = null, StatusDto? status = null) =>

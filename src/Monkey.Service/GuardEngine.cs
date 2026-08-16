@@ -4,7 +4,15 @@ using Monkey.Core;
 namespace Monkey.Service;
 
 /// <summary>Lesekopie der Telegram-Einstellungen fuer den Sync-Dienst.</summary>
-public sealed record TelegramConfigView(bool Enabled, string? WorkerUrl, string? SyncSecretProtected);
+public sealed record TelegramConfigView(
+    bool Enabled,
+    string? WorkerUrl,
+    string? SyncSecretProtected,
+    bool Managed,
+    string? CloudflareAccountId,
+    string? ScriptName,
+    string? KvNamespaceId,
+    int? WorkerVersion);
 
 /// <summary>
 /// Die gesamte Entscheidungslogik. Der Agent zeigt nur an und fragt an - hier faellt
@@ -34,6 +42,13 @@ internal sealed class GuardEngine
     private readonly StateStore _store = new();
     private readonly GuardState _state;
     private readonly TrustedClock _clock;
+
+    /// <summary>
+    /// Quelle der Sitzungsliste. Im Betrieb immer die WTS-Abfrage; Tests haengen
+    /// hier eine simulierte Liste ein, damit die Enforcement-Logik unabhaengig
+    /// von der Maschine prueffbar ist, auf der sie laeuft.
+    /// </summary>
+    private readonly Func<List<Native.SessionInfo>> _sessions;
 
     private readonly Dictionary<int, AgentReport> _agents = new();
 
@@ -73,8 +88,9 @@ internal sealed class GuardEngine
 
     private readonly record struct AgentReport(DateTimeOffset LastSeen, bool ScreensaverRunning, bool DisplayOff);
 
-    public GuardEngine()
+    public GuardEngine(Func<List<Native.SessionInfo>>? sessions = null)
     {
+        _sessions = sessions ?? Native.EnumerateSessions;
         _state = _store.Load();
         _clock = new TrustedClock(_state.TrustedNow == default ? null : _state.TrustedNow, _state.ClockTamperEvents);
         _lastSave = _clock.Now;
@@ -101,7 +117,7 @@ internal sealed class GuardEngine
             Accrue();
 
             // Einmal pro Tick abfragen, das Ergebnis wandert durch alle Schritte.
-            var all = Native.EnumerateSessions();
+            var all = _sessions();
             // Nur Sitzungen mit angemeldetem Benutzer. Der Anmeldebildschirm ist
             // ebenfalls eine aktive Sitzung - wuerde er mitzaehlen, gaelte jede
             // Abmeldung als Anmeldung und verbrauchte danach munter Guthaben.
@@ -125,11 +141,14 @@ internal sealed class GuardEngine
                 // wieder, wenn das Gesparte aufgebraucht wird.
                 _state.EarnedSeconds -= awake.TotalSeconds;
 
+                Today().UsedSeconds += awake.TotalSeconds;
+
                 foreach (var session in counting)
                     _sessionElapsed[session] = _sessionElapsed.GetValueOrDefault(session) + awake.TotalSeconds;
             }
 
             ClampEarned();
+            RecordDayEnd();
 
             // Wieder Guthaben da (Tagesgutschrift oder Nachlegen): die Zaehlung
             // der Leerlauf-Schonfristen beginnt von vorn.
@@ -157,7 +176,7 @@ internal sealed class GuardEngine
         if (_state.LastAccrualDate is not { } last)
         {
             _state.LastAccrualDate = today;
-            Grant();
+            Grant(today);
             Log.Write($"First top-up. Balance {Format(_state.BalanceSeconds)}.");
             return;
         }
@@ -168,7 +187,11 @@ internal sealed class GuardEngine
         while (last < today && days < 400)
         {
             last = last.AddDays(1);
-            Grant();
+
+            // Jeder nachgeholte Tag wird auch dort verbucht, wo er hingehoert -
+            // sonst saehe die Statistik nach einem langen Aus eine einzige
+            // Riesengutschrift am Rueckkehrtag.
+            Grant(last);
             days++;
         }
 
@@ -177,22 +200,88 @@ internal sealed class GuardEngine
         KickTelegram();
     }
 
-    private void Grant()
+    private void Grant(DateOnly date)
     {
+        // Der Tag taucht in der Rueckschau auch dann auf, wenn der Deckel eine
+        // Gutschrift verhindert - sonst klafften Luecken in der Kurve.
+        var day = DayFor(date);
+
         var cap = _state.Config.CapMinutes * 60.0;
         var grant = _state.Config.DailyGrantMinutes * 60.0;
 
         // Liegt das Guthaben durch eine manuelle Gutschrift bereits ueber dem Deckel,
         // wird es nicht gekuerzt - nur nicht weiter erhoeht.
-        if (_state.BalanceSeconds >= cap) return;
+        if (_state.BalanceSeconds < cap)
+        {
+            var before = _state.BalanceSeconds;
+            _state.BalanceSeconds = Math.Min(_state.BalanceSeconds + grant, cap);
 
-        var before = _state.BalanceSeconds;
-        _state.BalanceSeconds = Math.Min(_state.BalanceSeconds + grant, cap);
+            // Nur der tatsaechlich gutgeschriebene Teil zaehlt als erspart.
+            var credited = _state.BalanceSeconds - before;
+            _state.EarnedSeconds += credited;
+            ClampEarned();
 
-        // Nur der tatsaechlich gutgeschriebene Teil zaehlt als erspart.
-        _state.EarnedSeconds += _state.BalanceSeconds - before;
-        ClampEarned();
+            day.GrantedSeconds += credited;
+        }
+
+        // Auch fuer nachgeholte Tage einen Schlussstand hinterlegen, damit die
+        // Guthabenkurve ueber ausgeschaltete Tage hinweg durchlaeuft.
+        day.BalanceEndSeconds = Math.Max(0, _state.BalanceSeconds);
+        day.EarnedEndSeconds = Math.Max(0, _state.EarnedSeconds);
     }
+
+    // ------------------------------------------------------------ Rueckschau
+
+    /// <summary>Eintrag des laufenden Tages.</summary>
+    private DayStat Today() => DayFor(DateOnly.FromDateTime(_clock.Now.LocalDateTime));
+
+    /// <summary>
+    /// Eintrag eines Tages, notfalls neu angelegt. Der laufende Tag ist fast
+    /// immer der letzte - deshalb wird erst dort nachgesehen.
+    /// </summary>
+    private DayStat DayFor(DateOnly date)
+    {
+        if (_state.History.Count > 0 && _state.History[^1].Date == date)
+            return _state.History[^1];
+
+        if (_state.History.FirstOrDefault(d => d.Date == date) is { } existing)
+            return existing;
+
+        var day = new DayStat { Date = date };
+        _state.History.Add(day);
+        _state.History.Sort((a, b) => a.Date.CompareTo(b.Date));
+
+        while (_state.History.Count > GuardState.HistoryDays)
+            _state.History.RemoveAt(0);
+
+        return day;
+    }
+
+    /// <summary>
+    /// Der Tagesabschluss ist schlicht der jeweils letzte Stand des Tages - jeder
+    /// Tick schreibt ihn fort, der letzte vor Mitternacht bleibt stehen.
+    /// </summary>
+    private void RecordDayEnd()
+    {
+        var day = Today();
+        day.BalanceEndSeconds = Math.Max(0, _state.BalanceSeconds);
+        day.EarnedEndSeconds = Math.Max(0, _state.EarnedSeconds);
+    }
+
+    private List<DayStatDto> BuildHistory() =>
+        _state.History
+            .OrderBy(d => d.Date)
+            .Select(d => new DayStatDto
+            {
+                Date = d.Date,
+                UsedMinutes = d.UsedSeconds / 60.0,
+                GrantedMinutes = d.GrantedSeconds / 60.0,
+                AddedMinutes = d.AddedSeconds / 60.0,
+                RemovedMinutes = d.RemovedSeconds / 60.0,
+                BalanceEndMinutes = d.BalanceEndSeconds / 60.0,
+                EarnedEndMinutes = d.EarnedEndSeconds / 60.0,
+            })
+            .ToList();
 
     /// <summary>
     /// Das Ersparte kann nie groesser sein als das Guthaben, aus dem es stammt -
@@ -383,6 +472,14 @@ internal sealed class GuardEngine
                 case RequestType.Status:
                     return Response.Success(status: BuildStatus(request.SessionId));
 
+                case RequestType.History:
+                    return new Response
+                    {
+                        Ok = true,
+                        Status = BuildStatus(request.SessionId),
+                        History = BuildHistory(),
+                    };
+
                 case RequestType.Heartbeat:
                     _agents[request.SessionId] = new AgentReport(_clock.Now, request.ScreensaverRunning, request.DisplayOff);
                     return Response.Success(status: BuildStatus(request.SessionId));
@@ -454,7 +551,15 @@ internal sealed class GuardEngine
                     $"At most {FormatMinutes(_state.Config.MaxManualGrantMinutes)} can be added per go. " +
                     "Need more? Just do it again.");
 
+            // Der Betrag, der wirklich ankommt: wer mehr abzieht, als da ist,
+            // landet bei null - und genau das gehoert in die Rueckschau.
+            var beforeChange = _state.BalanceSeconds;
             _state.BalanceSeconds = Math.Max(0, _state.BalanceSeconds + request.Minutes * 60.0);
+
+            var change = _state.BalanceSeconds - beforeChange;
+            var todayEntry = Today();
+            if (change >= 0) todayEntry.AddedSeconds += change;
+            else todayEntry.RemovedSeconds += -change;
 
             // Zeit dazukaufen setzt die Evolution ganz auf Stufe 1 zurueck - gespart
             // ist nur, was aus den Tagesgutschriften stammt. Zeit abziehen setzt
@@ -505,8 +610,8 @@ internal sealed class GuardEngine
 
     private Response HandleChangePassword(Request request)
     {
-        if (string.IsNullOrEmpty(request.NewPassword) || request.NewPassword.Length < 4)
-            return Response.Fail("The new password needs at least 4 characters.");
+        if (string.IsNullOrEmpty(request.NewPassword) || request.NewPassword.Length < PasswordHash.MinimumLength)
+            return Response.Fail($"The new password needs at least {PasswordHash.MinimumLength} characters.");
 
         return WithPassword(request.Password, () =>
         {
@@ -541,16 +646,36 @@ internal sealed class GuardEngine
     {
         lock (_gate)
             return new TelegramConfigView(
-                _state.Telegram.Enabled, _state.Telegram.WorkerUrl, _state.Telegram.SyncSecretProtected);
+                _state.Telegram.Enabled,
+                _state.Telegram.WorkerUrl,
+                _state.Telegram.SyncSecretProtected,
+                _state.Telegram.Managed,
+                _state.Telegram.CloudflareAccountId,
+                _state.Telegram.ScriptName,
+                _state.Telegram.KvNamespaceId,
+                _state.Telegram.WorkerVersion);
     }
 
-    public void SetTelegram(bool enabled, string? workerUrl, string? syncSecretProtected)
+    public void SetTelegram(
+        bool enabled,
+        string? workerUrl,
+        string? syncSecretProtected,
+        bool managed = false,
+        string? cloudflareAccountId = null,
+        string? scriptName = null,
+        string? kvNamespaceId = null,
+        int? workerVersion = null)
     {
         lock (_gate)
         {
             _state.Telegram.Enabled = enabled;
             _state.Telegram.WorkerUrl = workerUrl;
             _state.Telegram.SyncSecretProtected = syncSecretProtected;
+            _state.Telegram.Managed = enabled && managed;
+            _state.Telegram.CloudflareAccountId = enabled ? cloudflareAccountId : null;
+            _state.Telegram.ScriptName = enabled ? scriptName : null;
+            _state.Telegram.KvNamespaceId = enabled ? kvNamespaceId : null;
+            _state.Telegram.WorkerVersion = enabled ? workerVersion : null;
 
             if (!enabled)
             {
@@ -605,7 +730,7 @@ internal sealed class GuardEngine
                 MaxManualGrantMinutes = _state.Config.MaxManualGrantMinutes,
                 MaxPauseMinutes = _state.Config.MaxPauseMinutes,
                 EvolutionStage = _state.EvolutionStage,
-                Counting = !paused && CountingSessions(Native.EnumerateSessions()).Count > 0,
+                Counting = !paused && CountingSessions(_sessions()).Count > 0,
                 PauseRemainingSeconds = paused ? (_state.PauseUntil!.Value - _clock.Now).TotalSeconds : 0,
                 LastAccrualDate = _state.LastAccrualDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                 TzOffsetMinutes = (int)DateTimeOffset.Now.Offset.TotalMinutes,
@@ -671,6 +796,7 @@ internal sealed class GuardEngine
                     return (false, $"At most {FormatMinutes(_state.Config.MaxManualGrantMinutes)} can be added per go.");
 
                 _state.BalanceSeconds += minutes * 60.0;
+                Today().AddedSeconds += minutes * 60.0;
 
                 // Wie beim Nachlegen per Passwort: dazugegeben ist nicht gespart.
                 _state.EarnedSeconds = 0;
@@ -765,7 +891,7 @@ internal sealed class GuardEngine
             SessionElapsedSeconds = _sessionElapsed.GetValueOrDefault(sessionId),
             Paused = paused,
             PauseUntil = paused ? _state.PauseUntil : null,
-            Counting = !paused && CountingSessions(Native.EnumerateSessions()).Count > 0,
+            Counting = !paused && CountingSessions(_sessions()).Count > 0,
             SecondsUntilLogoff = untilLogoff,
             WarningMinutes = _activeWarning is { } warning && _clock.Now - _warningIssuedAt < WarningVisibility
                 ? warning
@@ -778,9 +904,13 @@ internal sealed class GuardEngine
             PasswordConfigured = _state.HasPassword,
             Config = _state.Config.Clone(),
             ServiceVersion = UpdateWorker.CurrentVersionText,
+            SignedUpdatesAvailable = UpdateWorker.SignedUpdatesAvailable,
             TelegramEnabled = _state.Telegram.Enabled,
             TelegramWorkerHost = _state.Telegram.WorkerUrl is { } workerUrl
                 && Uri.TryCreate(workerUrl, UriKind.Absolute, out var workerUri) ? workerUri.Host : null,
+            TelegramWorkerManaged = _state.Telegram.Managed,
+            TelegramWorkerVersion = _state.Telegram.WorkerVersion,
+            TelegramCloudflareAccountId = _state.Telegram.CloudflareAccountId,
             TelegramLastSyncSecondsAgo = _lastTelegramSync is { } sync
                 ? Math.Max(0, (_clock.Now - sync).TotalSeconds) : null,
             TelegramLastError = _telegramError,

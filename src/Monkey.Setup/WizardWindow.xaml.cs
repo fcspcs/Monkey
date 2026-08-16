@@ -2,6 +2,7 @@ using System.Globalization;
 using System.IO;
 using System.Windows;
 using Monkey.Core;
+using Monkey.Ui;
 
 namespace Monkey.Setup;
 
@@ -9,12 +10,12 @@ namespace Monkey.Setup;
 /// The setup wizard. It only collects input and shows progress - the actual work
 /// happens in <see cref="SetupEngine"/>.
 /// </summary>
-public partial class WizardWindow : Window
+public partial class WizardWindow : ChromeWindow
 {
     private enum Page { Start, Install, Uninstall, Progress }
 
     private Page _page = Page.Start;
-    private GuardState? _existing;
+    private bool _replacementRequired;
     private bool _busy;
 
     public WizardWindow()
@@ -74,8 +75,8 @@ public partial class WizardWindow : Window
 
         // If a protected installation already exists, the old password is required
         // too - otherwise reinstalling would be a way around the protection.
-        _existing = SetupEngine.TryReadExistingState();
-        ExistingPanel.Visibility = _existing is { HasPassword: true } ? Visibility.Visible : Visibility.Collapsed;
+        _replacementRequired = SetupEngine.InstallationPresent();
+        ExistingPanel.Visibility = _replacementRequired ? Visibility.Visible : Visibility.Collapsed;
 
         PasswordBox1.Focus();
     }
@@ -140,9 +141,9 @@ public partial class WizardWindow : Window
         }
 
         var password = PasswordBox1.Password;
-        if (password.Length < 4)
+        if (password.Length < PasswordHash.MinimumLength)
         {
-            Fail("The master password needs at least 4 characters.");
+            Fail($"The master password needs at least {PasswordHash.MinimumLength} characters.");
             return;
         }
         if (password != PasswordBox2.Password)
@@ -151,30 +152,28 @@ public partial class WizardWindow : Window
             return;
         }
 
-        if (_existing is { HasPassword: true } old)
+        var currentPassword = ExistingPasswordBox.Password;
+        if (_replacementRequired && currentPassword.Length == 0)
         {
-            var check = ExistingPasswordBox.Password;
-            if (!PasswordHash.Verify(check, old.PasswordHash, old.PasswordSalt, old.PasswordIterations))
-            {
-                Fail("That's not the current master password.");
-                return;
-            }
+            Fail("Please enter the current master password.");
+            return;
         }
 
         BeginProgress("Setting up Monkey …");
 
         var options = new SetupEngine.InstallOptions(password, daily, cap, grant);
+        var ok = false;
         var error = string.Empty;
 
         await Task.Run(() =>
         {
-            try { SetupEngine.Install(options, Report); }
+            try { ok = SetupEngine.Install(options, currentPassword, Report, out error); }
             catch (Exception ex) { error = ex.Message; }
         });
 
-        if (error.Length > 0)
+        if (!ok)
         {
-            EndProgress(false, "Setup failed: " + error);
+            EndProgress(false, error.Length > 0 ? error : "Setup failed.");
             return;
         }
 

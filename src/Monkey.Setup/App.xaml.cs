@@ -13,7 +13,7 @@ public partial class App : Application
         // kein Passwort - getauscht werden nur die Programmdateien.
         if (e.Args.Any(a => string.Equals(a, "update", StringComparison.OrdinalIgnoreCase)))
         {
-            if (!SetupEngine.IsElevated())
+            if (!SetupEngine.IsLocalSystem())
             {
                 Shutdown(2);
                 return;

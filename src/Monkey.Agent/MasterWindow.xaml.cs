@@ -123,9 +123,9 @@ public partial class MasterWindow : ChromeWindow
 
         // Beim Aufbau des Fensters meldet sich der vorgewaehlte Eintrag, bevor
         // es die Seiten ueberhaupt gibt.
-        if (PageOverview is null) return;
+        if (PageExceptions is null) return;
 
-        PageOverview.Visibility = Visible(page == "Overview");
+        PageExceptions.Visibility = Visible(page == "Exceptions");
         PageStatistics.Visibility = Visible(page == "Statistics");
         PageDisplay.Visibility = Visible(page == "Display");
         PageSettings.Visibility = Visible(page == "Settings");
@@ -133,7 +133,7 @@ public partial class MasterWindow : ChromeWindow
         PageProtection.Visibility = Visible(page == "Protection");
 
         // Wo es nichts zu befugen gibt, steht auch kein Passwortfeld herum.
-        AuthBar.Visibility = Visible(page is "Overview" or "Settings" or "Telegram");
+        AuthBar.Visibility = Visible(page is "Exceptions" or "Settings" or "Telegram");
 
         // Die Vorlieben koennen zwischendurch ueber das Tray-Menue geaendert
         // worden sein - beim Aufschlagen der Seite also frisch einlesen.

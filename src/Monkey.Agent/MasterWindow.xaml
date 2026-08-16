@@ -57,10 +57,12 @@
                 </StackPanel>
 
                 <StackPanel Grid.Row="1" Margin="14,28,14,0">
-                    <RadioButton x:Name="NavOverview" Content="Overview" Tag="Overview"
+                    <!-- Zuerst der Rueckblick: Wer das Fenster oeffnet, will meist
+                         sehen, wie es laeuft. Eingriffe stehen daneben, nicht davor. -->
+                    <RadioButton x:Name="NavStatistics" Content="Statistics" Tag="Statistics"
                                  GroupName="Nav" IsChecked="True"
                                  Style="{StaticResource NavItem}" Checked="OnNavigate"/>
-                    <RadioButton Content="Statistics" Tag="Statistics"
+                    <RadioButton Content="Exceptions" Tag="Exceptions"
                                  GroupName="Nav" Style="{StaticResource NavItem}" Checked="OnNavigate"/>
                     <RadioButton Content="Display" Tag="Display"
                                  GroupName="Nav" Style="{StaticResource NavItem}" Checked="OnNavigate"/>
@@ -123,9 +125,12 @@
                      ganzen Bildschirm laeuft, liest sich nicht mehr. -->
                 <Grid Margin="34,66,30,34" MaxWidth="760">
 
-                    <!-- ================================================ Overview -->
+                    <!-- ============================================== Exceptions -->
 
-                    <StackPanel x:Name="PageOverview">
+                    <!-- Alles hier bricht bewusst mit der Regel: Zeit dazugeben,
+                         abziehen, die Uhr anhalten. Deshalb verlangt jede Taste
+                         auf dieser Seite das Master-Passwort. -->
+                    <StackPanel x:Name="PageExceptions" Visibility="Collapsed">
 
                         <GroupBox Header="Add or take time">
                             <StackPanel>
@@ -169,7 +174,7 @@
 
                     <!-- ============================================== Statistics -->
 
-                    <StackPanel x:Name="PageStatistics" Visibility="Collapsed">
+                    <StackPanel x:Name="PageStatistics">
 
                         <!-- Eine Filterzeile fuer das ganze Blatt. Sie bricht um,
                              wenn das Fenster schmal wird, statt zu beschneiden. -->

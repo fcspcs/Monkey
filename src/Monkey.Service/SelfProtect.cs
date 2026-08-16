@@ -47,7 +47,41 @@ internal static class SelfProtect
         "D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)" +
         "(A;;CCLCSWLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)";
 
-    private static bool TeardownRequested => File.Exists(Paths.TeardownMarker);
+    /// <summary>
+    /// Wie lange eine erteilte Freigabe gilt. Der Marker wird beim Entriegeln
+    /// geschrieben und danach von niemandem wieder entfernt - das Setup loescht
+    /// im Regelfall gleich das ganze Datenverzeichnis mit. Bricht es aber nach
+    /// dem Entriegeln ab, bliebe der Marker liegen und der Selbstschutz waere
+    /// ab da <em>dauerhaft</em> abgeschaltet, ohne dass es jemand merkt. Die
+    /// Freigabe laeuft deshalb ab: sie gilt fuer den laufenden Setup-Vorgang,
+    /// nicht fuer alle Zeit.
+    /// </summary>
+    private static readonly TimeSpan TeardownWindow = TimeSpan.FromMinutes(15);
+
+    private static bool TeardownRequested
+    {
+        get
+        {
+            if (!File.Exists(Paths.TeardownMarker)) return false;
+
+            try
+            {
+                var written = DateTimeOffset.Parse(
+                    File.ReadAllText(Paths.TeardownMarker).Trim(),
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind);
+
+                return DateTimeOffset.Now - written < TeardownWindow;
+            }
+            catch (Exception ex)
+            {
+                // Unlesbar heisst hier "nicht nachweisbar freigegeben". Im Zweifel
+                // riegelt Monkey zu, nicht auf.
+                Log.Write($"Teardown marker unreadable ({ex.Message}) - treating it as expired.");
+                return false;
+            }
+        }
+    }
 
     /// <summary>
     /// Wird bei jedem Dienststart aufgerufen. Richtet alle Riegel neu auf.

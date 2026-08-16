@@ -346,10 +346,16 @@ internal static class SetupEngine
             EnsureServiceRunning();
 
             report("Unlocking the existing installation …");
-            var response = SendUnlock(password);
+            var response = SendUnlock(password, out var reason);
             if (response is null)
             {
-                error = "The service is not responding. Without it, the protected installation won't be changed.";
+                // Ausdruecklich mit dem Hinweis auf die Riegel: der Dienst kann
+                // die Freigabe durchaus ausgefuehrt haben, bevor die Antwort
+                // verloren ging. Dann steht die Anlage offen, und der naechste
+                // Dienststart richtet sie wieder auf.
+                error = $"No usable answer from the service ({reason}). Nothing was installed. " +
+                        "If this keeps happening, restart 'Monkey screen time' in services.msc — " +
+                        "that puts the protection back in place — and try again.";
                 return false;
             }
             if (!response.Ok)
@@ -465,20 +471,53 @@ internal static class SetupEngine
         File.WriteAllText(Paths.StateFile, state.ToJson());
     }
 
-    private static Response? SendUnlock(string password)
+    /// <summary>
+    /// Fragt den Dienst nach der Freigabe. Beim Entriegeln raeumt er seine Riegel
+    /// ab - Aufgabenplanung, Verzeichnisrechte, Dienstrechte -, und das dauert
+    /// mitunter mehrere Sekunden. Geht die Antwort dabei verloren, ist die Anlage
+    /// bereits entriegelt: dann hier abzubrechen und "der Dienst antwortet nicht"
+    /// zu melden waere doppelt falsch, denn es stimmt nicht und es laesst den
+    /// Rechner ungeschuetzt zurueck. Deshalb wird es erneut versucht, und der
+    /// tatsaechliche Grund wird durchgereicht statt verschluckt.
+    /// </summary>
+    private static Response? SendUnlock(string password, out string reason)
     {
-        try
+        reason = string.Empty;
+
+        for (var attempt = 1; attempt <= 3; attempt++)
         {
-            using var pipe = new NamedPipeClientStream(".", Paths.PipeName, PipeDirection.InOut);
-            pipe.Connect(4000);
-            using var writer = new StreamWriter(pipe, new UTF8Encoding(false)) { AutoFlush = true };
-            using var reader = new StreamReader(pipe, Encoding.UTF8);
-            var request = new Request { Type = RequestType.Unlock, Password = password };
-            writer.WriteLine(request.ToJson().ReplaceLineEndings(" "));
-            var line = reader.ReadLine();
-            return string.IsNullOrWhiteSpace(line) ? null : Response.FromJson(line);
+            try
+            {
+                using var pipe = new NamedPipeClientStream(".", Paths.PipeName, PipeDirection.InOut);
+                pipe.Connect(5000);
+
+                using var writer = new StreamWriter(pipe, new UTF8Encoding(false)) { AutoFlush = true };
+                using var reader = new StreamReader(pipe, Encoding.UTF8);
+
+                var request = new Request { Type = RequestType.Unlock, Password = password };
+                writer.WriteLine(request.ToJson().ReplaceLineEndings(" "));
+
+                var line = reader.ReadLine();
+                if (!string.IsNullOrWhiteSpace(line))
+                {
+                    var response = Response.FromJson(line);
+                    if (response is not null) return response;
+                    reason = "the service sent an answer that could not be read";
+                }
+                else
+                {
+                    reason = "the service closed the connection without answering";
+                }
+            }
+            catch (Exception ex)
+            {
+                reason = ex.Message;
+            }
+
+            if (attempt < 3) Thread.Sleep(1500);
         }
-        catch { return null; }
+
+        return null;
     }
 
     private static void EnsureServiceRunning()

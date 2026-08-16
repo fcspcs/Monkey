@@ -491,8 +491,15 @@ internal static class SetupEngine
                 using var pipe = new NamedPipeClientStream(".", Paths.PipeName, PipeDirection.InOut);
                 pipe.Connect(5000);
 
-                using var writer = new StreamWriter(pipe, new UTF8Encoding(false)) { AutoFlush = true };
-                using var reader = new StreamReader(pipe, Encoding.UTF8);
+                // Beide Huellen lassen die Pipe ausdruecklich offen. Ohne
+                // leaveOpen schliesst der zuerst freigegebene Leser sie, und der
+                // Schreiber stolpert danach beim Leeren ueber die geschlossene
+                // Pipe - mitten im return, also nachdem die Antwort laengst da
+                // war. Genau daran ging sie verloren. Agent und Dienst machen es
+                // seit jeher richtig (siehe PipeClient und PipeServer).
+                using var writer = new StreamWriter(pipe, new UTF8Encoding(false), 4096, leaveOpen: true)
+                    { AutoFlush = true };
+                using var reader = new StreamReader(pipe, Encoding.UTF8, false, 4096, leaveOpen: true);
 
                 var request = new Request { Type = RequestType.Unlock, Password = password };
                 writer.WriteLine(request.ToJson().ReplaceLineEndings(" "));

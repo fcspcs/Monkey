@@ -109,7 +109,6 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <ScrollViewer Grid.Row="0"
@@ -505,63 +504,231 @@
                              ganze Block und macht Platz fuer den Betrieb. -->
                         <StackPanel x:Name="TelegramSetupPanel">
 
-                            <TextBlock Style="{StaticResource Body}" VerticalAlignment="Top" Margin="0,0,0,30"
-                                       Text="Check the balance and top up from your phone. Everything runs through a worker in your own free Cloudflare account — the master password never leaves this PC."/>
+                            <TextBlock Style="{StaticResource Body}" VerticalAlignment="Top" Margin="0,0,0,20"
+                                       Text="Set up phone access in four short steps. Monkey prepares the names and Cloudflare permissions; the master password never leaves this PC."/>
 
-                            <GroupBox Header="1 — Create two Telegram bots">
-                                <StackPanel>
-                                    <TextBlock Style="{StaticResource Body}" VerticalAlignment="Top" Margin="0,0,0,14"
-                                               Text="Send /newbot to @BotFather twice, then paste both tokens. One bot only shows the balance; the friend's bot may also add time and pause."/>
-                                    <Button Content="Open @BotFather" Click="OnOpenBotFather"
-                                            HorizontalAlignment="Left" Margin="0,0,0,16"/>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="Auto"/>
-                                        </Grid.RowDefinitions>
-                                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Monkey bot token" Style="{StaticResource RowLabel}" Width="140" Margin="0,0,12,5"/>
-                                        <PasswordBox Grid.Row="0" Grid.Column="1" x:Name="MonkeyTokenBox" Margin="0,0,0,5"/>
-                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Friend bot token" Style="{StaticResource RowLabel}" Width="140" Margin="0,5,12,0"/>
-                                        <PasswordBox Grid.Row="1" Grid.Column="1" x:Name="FriendTokenBox" Margin="0,5,0,0"/>
-                                    </Grid>
-                                </StackPanel>
-                            </GroupBox>
+                            <!-- Der Fortschritt ist bewusst kompakt. Immer nur die
+                                 Karte des aktuellen Schritts ist sichtbar. -->
+                            <StackPanel Margin="0,0,0,20">
+                                <TextBlock x:Name="TelegramSetupStepText"
+                                           Text="Step 1 of 4 · Telegram bots"
+                                           FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextMutedBrush}"
+                                           Margin="0,0,0,9"/>
+                                <UniformGrid Columns="4" Height="4">
+                                    <Border x:Name="TelegramStep1Indicator" CornerRadius="2" Margin="0,0,5,0"/>
+                                    <Border x:Name="TelegramStep2Indicator" CornerRadius="2" Margin="0,0,5,0"/>
+                                    <Border x:Name="TelegramStep3Indicator" CornerRadius="2" Margin="0,0,5,0"/>
+                                    <Border x:Name="TelegramStep4Indicator" CornerRadius="2"/>
+                                </UniformGrid>
+                            </StackPanel>
 
-                            <GroupBox Header="2 — Deploy to Cloudflare">
-                                <StackPanel>
-                                    <TextBlock Style="{StaticResource Body}" VerticalAlignment="Top" Margin="0,0,0,14"
-                                               Text="Create an 'Edit Cloudflare Workers' API token and copy the Account ID from the dashboard. Monkey uses the token once and forgets it — revoke it afterwards."/>
-                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                                        <Button Content="Create API token" Click="OnOpenCloudflareToken"/>
-                                        <Button Content="Open dashboard" Click="OnOpenCloudflareDashboard" Margin="10,0,0,0"/>
+                            <!-- Step 1: BotFather. Alle sechs Nachrichten sind
+                                 fertig vorbereitet und mit einem Klick kopierbar. -->
+                            <StackPanel x:Name="TelegramBotsStep">
+                                <GroupBox Header="Create the two bots">
+                                    <StackPanel>
+                                        <TextBlock Style="{StaticResource Body}" VerticalAlignment="Top" Margin="0,0,0,14"
+                                                   Text="Open @BotFather and paste the three prepared messages for Monkey's bot, one after another. Then repeat them for the friend's bot. If Telegram says a username is taken, generate fresh suggestions."/>
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,18">
+                                            <Button Content="Open @BotFather" Click="OnOpenBotFather"/>
+                                            <Button Content="New name suggestions" Click="OnRegenerateBotNames"
+                                                    Style="{StaticResource SubtleButton}" Margin="6,0,0,0"/>
+                                        </StackPanel>
+
+                                        <TextBlock Text="Monkey's bot · balance and status only"
+                                                   FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"
+                                                   Margin="0,0,0,8"/>
+                                        <Grid Margin="0,0,0,16">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="76"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Grid.Row="0" Text="1 · Command" Style="{StaticResource Hint}"/>
+                                            <TextBox Grid.Row="0" Grid.Column="1" Text="/newbot" IsReadOnly="True" Margin="0,0,8,5"/>
+                                            <Button Grid.Row="0" Grid.Column="2" Content="Copy" Tag="newbot"
+                                                    Style="{StaticResource ChipButton}" Click="OnCopyTelegramSetupValue" Margin="0,0,0,5"/>
+                                            <TextBlock Grid.Row="1" Text="2 · Name" Style="{StaticResource Hint}"/>
+                                            <TextBox Grid.Row="1" Grid.Column="1" x:Name="MonkeyBotNameBox" IsReadOnly="True" Margin="0,0,8,5"/>
+                                            <Button Grid.Row="1" Grid.Column="2" Content="Copy" Tag="monkey-name"
+                                                    Style="{StaticResource ChipButton}" Click="OnCopyTelegramSetupValue" Margin="0,0,0,5"/>
+                                            <TextBlock Grid.Row="2" Text="3 · Username" Style="{StaticResource Hint}"/>
+                                            <TextBox Grid.Row="2" Grid.Column="1" x:Name="MonkeyBotUsernameBox" IsReadOnly="True" Margin="0,0,8,0"/>
+                                            <Button Grid.Row="2" Grid.Column="2" Content="Copy" Tag="monkey-username"
+                                                    Style="{StaticResource ChipButton}" Click="OnCopyTelegramSetupValue"/>
+                                        </Grid>
+
+                                        <TextBlock Text="Friend's bot · may add time and pause"
+                                                   FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"
+                                                   Margin="0,0,0,8"/>
+                                        <Grid Margin="0,0,0,18">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="76"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Grid.Row="0" Text="1 · Command" Style="{StaticResource Hint}"/>
+                                            <TextBox Grid.Row="0" Grid.Column="1" Text="/newbot" IsReadOnly="True" Margin="0,0,8,5"/>
+                                            <Button Grid.Row="0" Grid.Column="2" Content="Copy" Tag="newbot"
+                                                    Style="{StaticResource ChipButton}" Click="OnCopyTelegramSetupValue" Margin="0,0,0,5"/>
+                                            <TextBlock Grid.Row="1" Text="2 · Name" Style="{StaticResource Hint}"/>
+                                            <TextBox Grid.Row="1" Grid.Column="1" x:Name="FriendBotNameBox" IsReadOnly="True" Margin="0,0,8,5"/>
+                                            <Button Grid.Row="1" Grid.Column="2" Content="Copy" Tag="friend-name"
+                                                    Style="{StaticResource ChipButton}" Click="OnCopyTelegramSetupValue" Margin="0,0,0,5"/>
+                                            <TextBlock Grid.Row="2" Text="3 · Username" Style="{StaticResource Hint}"/>
+                                            <TextBox Grid.Row="2" Grid.Column="1" x:Name="FriendBotUsernameBox" IsReadOnly="True" Margin="0,0,8,0"/>
+                                            <Button Grid.Row="2" Grid.Column="2" Content="Copy" Tag="friend-username"
+                                                    Style="{StaticResource ChipButton}" Click="OnCopyTelegramSetupValue"/>
+                                        </Grid>
+
+                                        <TextBlock Style="{StaticResource Hint}" VerticalAlignment="Top" Margin="0,0,0,10"
+                                                   Text="BotFather shows each token only after the bot is created. Copy that complete token and paste it below."/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="132"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Grid.Row="0" Text="Monkey bot token" Style="{StaticResource RowLabel}" Margin="0,0,12,5"/>
+                                            <PasswordBox Grid.Row="0" Grid.Column="1" x:Name="MonkeyTokenBox" Margin="0,0,8,5"/>
+                                            <Button Grid.Row="0" Grid.Column="2" Content="Paste" Tag="monkey-token"
+                                                    Style="{StaticResource ChipButton}" Click="OnPasteTelegramSetupValue" Margin="0,0,0,5"/>
+                                            <TextBlock Grid.Row="1" Text="Friend bot token" Style="{StaticResource RowLabel}" Margin="0,5,12,0"/>
+                                            <PasswordBox Grid.Row="1" Grid.Column="1" x:Name="FriendTokenBox" Margin="0,5,8,0"/>
+                                            <Button Grid.Row="1" Grid.Column="2" Content="Paste" Tag="friend-token"
+                                                    Style="{StaticResource ChipButton}" Click="OnPasteTelegramSetupValue" Margin="0,5,0,0"/>
+                                        </Grid>
                                     </StackPanel>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="Auto"/>
-                                        </Grid.RowDefinitions>
-                                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Account ID" Style="{StaticResource RowLabel}" Width="140" Margin="0,0,12,5"/>
-                                        <TextBox Grid.Row="0" Grid.Column="1" x:Name="CloudflareAccountIdBox" Margin="0,0,0,5"/>
-                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="API token" Style="{StaticResource RowLabel}" Width="140" Margin="0,5,12,0"/>
-                                        <PasswordBox Grid.Row="1" Grid.Column="1" x:Name="CloudflareApiTokenBox" Margin="0,5,0,0"/>
-                                    </Grid>
-                                    <TextBlock Style="{StaticResource Hint}" VerticalAlignment="Top" Margin="0,14,0,0"
-                                               Text="This creates a dedicated KV store and worker in your account, installs the secret, registers both webhooks and stores only the worker URL plus an encrypted sync secret locally."/>
+                                </GroupBox>
+                                <Button Content="Continue to Cloudflare" Style="{StaticResource PrimaryButton}"
+                                        Click="OnTelegramSetupNext" HorizontalAlignment="Right"/>
+                            </StackPanel>
+
+                            <!-- Step 2: aktueller Cloudflare-Pfad laut offizieller
+                                 Dokumentation (Account Home -> Search). -->
+                            <StackPanel x:Name="TelegramAccountStep" Visibility="Collapsed">
+                                <GroupBox Header="Choose the Cloudflare account">
+                                    <StackPanel>
+                                        <TextBlock Style="{StaticResource Body}" VerticalAlignment="Top" Margin="0,0,0,14"
+                                                   Text="Monkey needs the 32-character Account ID of the account that will own the Worker. A domain is not required."/>
+                                        <Border Background="{StaticResource SurfaceSunkenBrush}" CornerRadius="{StaticResource PanelRadius}"
+                                                Padding="16,12" Margin="0,0,0,14">
+                                            <StackPanel>
+                                                <TextBlock Text="1 · Open Workers &amp; Pages and select the account." Style="{StaticResource Body}" VerticalAlignment="Top" Margin="0,0,0,6"/>
+                                                <TextBlock Text="2 · If Cloudflare asks for a workers.dev subdomain, choose one once." Style="{StaticResource Body}" VerticalAlignment="Top" Margin="0,0,0,6"/>
+                                                <TextBlock Text="3 · Press Ctrl+K, type “Copy account ID”, then select that result." Style="{StaticResource Body}" VerticalAlignment="Top"/>
+                                            </StackPanel>
+                                        </Border>
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                                            <Button Content="Open Workers &amp; Pages" Click="OnOpenCloudflareDashboard"/>
+                                            <Button Content="Open official ID guide" Click="OnOpenCloudflareAccountDocs"
+                                                    Style="{StaticResource SubtleButton}" Margin="6,0,0,0"/>
+                                        </StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="108"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="Account ID" Style="{StaticResource RowLabel}" Margin="0,0,12,0"/>
+                                            <TextBox Grid.Column="1" x:Name="CloudflareAccountIdBox" Margin="0,0,8,0"/>
+                                            <Button Grid.Column="2" Content="Paste" Tag="account-id"
+                                                    Style="{StaticResource ChipButton}" Click="OnPasteTelegramSetupValue"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </GroupBox>
+                                <Grid>
+                                    <Button Content="Back" Click="OnTelegramSetupBack" HorizontalAlignment="Left"/>
+                                    <Button Content="Continue to API token" Style="{StaticResource PrimaryButton}"
+                                            Click="OnTelegramSetupNext" HorizontalAlignment="Right"/>
+                                </Grid>
+                            </StackPanel>
+
+                            <!-- Step 3: Der Link ist eine offizielle Cloudflare-
+                                 Template-URL und fuellt die Rechte bereits aus. -->
+                            <StackPanel x:Name="TelegramTokenStep" Visibility="Collapsed">
+                                <GroupBox Header="Create a one-time API token">
+                                    <StackPanel>
+                                        <TextBlock Style="{StaticResource Body}" VerticalAlignment="Top" Margin="0,0,0,14"
+                                                   Text="The button opens Cloudflare's token form with Monkey's two required permissions already filled in. Do not use the Global API Key."/>
+                                        <Border Background="{StaticResource SurfaceSunkenBrush}" CornerRadius="{StaticResource PanelRadius}"
+                                                Padding="16,12" Margin="0,0,0,14">
+                                            <StackPanel>
+                                                <TextBlock Text="1 · Confirm Account · Workers Scripts · Edit." Style="{StaticResource Body}" VerticalAlignment="Top" Margin="0,0,0,6"/>
+                                                <TextBlock Text="2 · Confirm Account · Workers KV Storage · Edit." Style="{StaticResource Body}" VerticalAlignment="Top" Margin="0,0,0,6"/>
+                                                <TextBlock Text="3 · Click Continue to summary, then Create Token." Style="{StaticResource Body}" VerticalAlignment="Top" Margin="0,0,0,6"/>
+                                                <TextBlock Text="4 · Copy the token immediately; Cloudflare shows it only once." Style="{StaticResource Body}" VerticalAlignment="Top"/>
+                                            </StackPanel>
+                                        </Border>
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                                            <Button Content="Open pre-filled token form" Click="OnOpenCloudflareToken"/>
+                                            <Button Content="Open official token guide" Click="OnOpenCloudflareTokenDocs"
+                                                    Style="{StaticResource SubtleButton}" Margin="6,0,0,0"/>
+                                        </StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="108"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="API token" Style="{StaticResource RowLabel}" Margin="0,0,12,0"/>
+                                            <PasswordBox Grid.Column="1" x:Name="CloudflareApiTokenBox" Margin="0,0,8,0"/>
+                                            <Button Grid.Column="2" Content="Paste" Tag="api-token"
+                                                    Style="{StaticResource ChipButton}" Click="OnPasteTelegramSetupValue"/>
+                                        </Grid>
+                                        <TextBlock Style="{StaticResource Hint}" VerticalAlignment="Top" Margin="0,12,0,0"
+                                                   Text="Monkey uses this token for this deployment only, never stores it, and clears it from the window after the attempt."/>
+                                    </StackPanel>
+                                </GroupBox>
+                                <Grid>
+                                    <Button Content="Back" Click="OnTelegramSetupBack" HorizontalAlignment="Left"/>
+                                    <Button Content="Review deployment" Style="{StaticResource PrimaryButton}"
+                                            Click="OnTelegramSetupNext" HorizontalAlignment="Right"/>
+                                </Grid>
+                            </StackPanel>
+
+                            <!-- Step 4: Erst hier wird etwas in Cloudflare
+                                 veraendert. Die Zusammenfassung macht das klar. -->
+                            <StackPanel x:Name="TelegramDeployStep" Visibility="Collapsed">
+                                <GroupBox Header="Review and connect">
+                                    <StackPanel>
+                                        <TextBlock x:Name="TelegramSetupReviewText" Style="{StaticResource Body}"
+                                                   VerticalAlignment="Top" Margin="0,0,0,14"/>
+                                        <Border Background="{StaticResource SurfaceSunkenBrush}" CornerRadius="{StaticResource PanelRadius}"
+                                                Padding="16,12">
+                                            <TextBlock Style="{StaticResource Body}" VerticalAlignment="Top"
+                                                       Text="Monkey will create one dedicated KV store and one Worker, install encrypted secrets, register both Telegram webhooks, and keep only the Worker URL plus an encrypted sync secret on this PC."/>
+                                        </Border>
+                                        <TextBlock Style="{StaticResource Hint}" VerticalAlignment="Top" Margin="0,12,0,0"
+                                                   Text="After a successful deployment, revoke this one-time API token in Cloudflare. Pairing the two chats is the next step."/>
+                                    </StackPanel>
+                                </GroupBox>
+                                <Grid>
+                                    <Button Content="Back" Click="OnTelegramSetupBack" HorizontalAlignment="Left"/>
                                     <Button x:Name="DeployTelegramButton" Content="Deploy worker &amp; connect"
                                             Style="{StaticResource PrimaryButton}"
-                                            Click="OnTelegramDeploy" HorizontalAlignment="Left" Margin="0,18,0,0"/>
-                                </StackPanel>
-                            </GroupBox>
+                                            Click="OnTelegramDeploy" HorizontalAlignment="Right"/>
+                                </Grid>
+                            </StackPanel>
 
-                            <Expander Header="Connect an existing worker instead">
+                            <!-- Der manuelle Altweg bleibt direkt erreichbar,
+                                 stoert den Wizard eingeklappt aber nicht. -->
+                            <Expander Header="Advanced: connect an existing worker instead" Margin="0,18,0,0">
                                 <StackPanel>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
@@ -676,24 +843,10 @@
                 </Grid>
             </ScrollViewer>
 
-            <!-- Die Rueckmeldung des Dienstes bleibt ausserhalb des Blaetter-
-                 bereichs stehen, sonst rutscht sie bei langem Inhalt aus dem
-                 Bild. -->
-            <Border x:Name="MessageBorder" Grid.Row="1"
-                    Background="{StaticResource SuccessBrush}"
-                    CornerRadius="{StaticResource PanelRadius}"
-                    Padding="18,12"
-                    Margin="34,0,30,18"
-                    MaxWidth="760"
-                    Visibility="Collapsed">
-                <TextBlock x:Name="MessageText" TextWrapping="Wrap" VerticalAlignment="Top"
-                           Foreground="{StaticResource SuccessTextBrush}"/>
-            </Border>
-
             <!-- Der Schluessel liegt dort, wo er gebraucht wird: unter den
                  Schaltflaechen, die ihn verlangen - und nur auf den Seiten, auf
                  denen es etwas zu befugen gibt. -->
-            <Border x:Name="AuthBar" Grid.Row="2"
+            <Border x:Name="AuthBar" Grid.Row="1"
                     BorderBrush="{StaticResource DividerBrush}"
                     BorderThickness="0,1,0,0"
                     Padding="34,14,30,16">
@@ -707,6 +860,38 @@
                     <PasswordBox Grid.Column="1" x:Name="MasterPassword"
                                  HorizontalAlignment="Left" MinWidth="260" MaxWidth="340"
                                  ToolTip="Needed for anything that changes the limit. Only the service ever checks it."/>
+                </Grid>
+            </Border>
+
+            <!-- Echte Overlay-Rueckmeldung: Sie belegt keine Layout-Zeile und
+                 erzeugt deshalb keinen kuenstlichen Footer. -->
+            <Border x:Name="MessageBorder" Grid.RowSpan="2"
+                    Panel.ZIndex="100"
+                    HorizontalAlignment="Right" VerticalAlignment="Top"
+                    Background="{StaticResource SuccessBrush}"
+                    BorderBrush="{StaticResource SuccessBorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource PanelRadius}"
+                    Padding="16,11,10,11"
+                    Margin="24,58,30,0"
+                    Width="Auto" MaxWidth="430"
+                    Visibility="Collapsed">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="18" ShadowDepth="4" Opacity="0.18"/>
+                </Border.Effect>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="MessageText" TextWrapping="Wrap" VerticalAlignment="Center"
+                               Foreground="{StaticResource SuccessTextBrush}"/>
+                    <Button Grid.Column="1" Content="×" Click="OnDismissToast"
+                            Style="{StaticResource SubtleButton}"
+                            Foreground="{Binding Foreground, ElementName=MessageText}"
+                            FontSize="18" FontWeight="Normal"
+                            Padding="7,1" Margin="8,-4,-3,-4"
+                            ToolTip="Dismiss"/>
                 </Grid>
             </Border>
         </Grid>

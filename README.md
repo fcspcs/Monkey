@@ -144,10 +144,17 @@ Check the balance and top up from your phone — **even while the PC is off**:
 
 It runs through a tiny relay in your **own free Cloudflare account** — this
 project hosts nothing. Open the control panel's **Telegram** tab: its assistant
-opens BotFather, deploys the Worker and KV store, installs the secret, connects
-both bots and walks through pairing. Cloudflare and bot credentials are used
-once and are not stored on the PC. Bot tokens and webhook keys are encrypted
-Cloudflare **secret bindings**, never ordinary KV values.
+walks through four separate screens. It prepares copyable BotFather commands,
+bot names and unique username suggestions; shows where Cloudflare's current
+dashboard hides the Account ID; opens a pre-filled, account-scoped API-token
+form with only **Workers Scripts: Edit** and **Workers KV Storage: Edit**; then
+deploys the Worker and KV store, installs the secrets and connects both bots.
+Cloudflare and bot credentials are used once and are not stored on the PC. Bot
+tokens and webhook keys are encrypted Cloudflare **secret bindings**, never
+ordinary KV values. The wizard links directly to Cloudflare's official
+[Account ID](https://developers.cloudflare.com/fundamentals/account/find-account-and-zone-ids/)
+and [API token](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/)
+instructions if the dashboard labels change.
 
 The same tab checks the deployed Worker version and safely updates its code.
 Updates preserve pairings, the last status and queued commands. Monkey asks for

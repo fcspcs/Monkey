@@ -22,6 +22,7 @@ public partial class MasterWindow : ChromeWindow
 
     private readonly int _sessionId = Process.GetCurrentProcess().SessionId;
     private readonly DispatcherTimer _passwordTimer;
+    private readonly DispatcherTimer _toastTimer;
 
     /// <summary>Letzter Stand des Dienstes - die Statistik rechnet damit weiter.</summary>
     private StatusDto? _status;
@@ -36,6 +37,9 @@ public partial class MasterWindow : ChromeWindow
 
     /// <summary>Steht die Anbindung, wurde der Einrichtungsteil ausdruecklich aufgerufen?</summary>
     private bool _telegramSetupPinned;
+
+    /// <summary>Aktuelle Seite des gefuehrten Telegram-Assistenten (1 bis 4).</summary>
+    private int _telegramSetupStep = 1;
 
     public MasterWindow()
     {
@@ -66,12 +70,23 @@ public partial class MasterWindow : ChromeWindow
             if (MasterPassword.Password.Length > 0) _passwordTimer.Start();
         };
 
+        // Rueckmeldungen liegen als Overlay ueber dem Blatt und verschwinden
+        // wieder von allein. Ein Fehler bleibt etwas laenger lesbar.
+        _toastTimer = new DispatcherTimer();
+        _toastTimer.Tick += (_, _) => DismissToast();
+
         BuildDisplayChoices();
         LoadDisplaySettings();
+        GenerateTelegramBotNames();
+        ShowTelegramSetupStep(1);
 
         GimmickBox.SizeChanged += (_, _) => SizeGimmick();
 
-        Closed += (_, _) => _passwordTimer.Stop();
+        Closed += (_, _) =>
+        {
+            _passwordTimer.Stop();
+            _toastTimer.Stop();
+        };
         Loaded += async (_, _) =>
         {
             UpdateProtectionStatus();
@@ -822,6 +837,178 @@ public partial class MasterWindow : ChromeWindow
 
     // ------------------------------------------------------------- Telegram
 
+    private static readonly string[] TelegramStepTitles =
+    [
+        "Telegram bots",
+        "Cloudflare account",
+        "Cloudflare API token",
+        "Review and connect",
+    ];
+
+    /// <summary>
+    /// Bot-Anzeigenamen duerfen doppelt vorkommen, Telegram-Benutzernamen nicht.
+    /// Ein kurzer Zufallsteil macht die Vorschlaege praktisch eindeutig; falls
+    /// BotFather dennoch ablehnt, erzeugt der Nutzer mit einem Klick neue.
+    /// </summary>
+    private void GenerateTelegramBotNames()
+    {
+        var suffix = Convert.ToHexString(
+            System.Security.Cryptography.RandomNumberGenerator.GetBytes(4)).ToLowerInvariant();
+        var labelSuffix = suffix.ToUpperInvariant();
+
+        MonkeyBotNameBox.Text = $"Monkey balance {labelSuffix}";
+        MonkeyBotUsernameBox.Text = $"monkey_balance_{suffix}_bot";
+        FriendBotNameBox.Text = $"Monkey friend {labelSuffix}";
+        FriendBotUsernameBox.Text = $"monkey_friend_{suffix}_bot";
+    }
+
+    private void OnRegenerateBotNames(object sender, RoutedEventArgs e)
+    {
+        GenerateTelegramBotNames();
+        Show(true, "Fresh bot names generated. Use the new values for both bots.");
+    }
+
+    private void OnCopyTelegramSetupValue(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button { Tag: string key }) return;
+
+        var (value, label) = key switch
+        {
+            "newbot" => ("/newbot", "BotFather command"),
+            "monkey-name" => (MonkeyBotNameBox.Text, "Monkey bot name"),
+            "monkey-username" => (MonkeyBotUsernameBox.Text, "Monkey bot username"),
+            "friend-name" => (FriendBotNameBox.Text, "friend bot name"),
+            "friend-username" => (FriendBotUsernameBox.Text, "friend bot username"),
+            _ => (string.Empty, string.Empty),
+        };
+
+        if (value.Length == 0) return;
+
+        try
+        {
+            Clipboard.SetText(value);
+            Show(true, $"{label} copied. Paste it into @BotFather.");
+        }
+        catch (Exception ex)
+        {
+            Show(false, $"Could not copy to the clipboard: {ex.Message}");
+        }
+    }
+
+    private void OnPasteTelegramSetupValue(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button { Tag: string key }) return;
+
+        string value;
+        try
+        {
+            value = Clipboard.ContainsText() ? Clipboard.GetText().Trim() : string.Empty;
+        }
+        catch (Exception ex)
+        {
+            Show(false, $"Could not read the clipboard: {ex.Message}");
+            return;
+        }
+
+        if (value.Length == 0)
+        {
+            Show(false, "The clipboard contains no text to paste.");
+            return;
+        }
+
+        var label = key switch
+        {
+            "monkey-token" => SetPassword(MonkeyTokenBox, value, "Monkey bot token"),
+            "friend-token" => SetPassword(FriendTokenBox, value, "friend bot token"),
+            "account-id" => SetText(CloudflareAccountIdBox, value, "Cloudflare Account ID"),
+            "api-token" => SetPassword(CloudflareApiTokenBox, value, "Cloudflare API token"),
+            _ => string.Empty,
+        };
+
+        if (label.Length > 0) Show(true, $"{label} pasted.");
+    }
+
+    private static string SetPassword(
+        System.Windows.Controls.PasswordBox target, string value, string label)
+    {
+        target.Password = value;
+        return label;
+    }
+
+    private static string SetText(
+        System.Windows.Controls.TextBox target, string value, string label)
+    {
+        target.Text = value;
+        return label;
+    }
+
+    private void OnTelegramSetupNext(object sender, RoutedEventArgs e)
+    {
+        if (_telegramSetupStep == 1 &&
+            (MonkeyTokenBox.Password.Length == 0 || FriendTokenBox.Password.Length == 0))
+        {
+            Show(false, "Create both bots first and paste both tokens before continuing.");
+            return;
+        }
+
+        if (_telegramSetupStep == 2 && !HasValidCloudflareAccountId())
+        {
+            Show(false, "The Cloudflare Account ID must contain exactly 32 hexadecimal characters.");
+            return;
+        }
+
+        if (_telegramSetupStep == 3 && CloudflareApiTokenBox.Password.Trim().Length < 20)
+        {
+            Show(false, "Paste the complete Cloudflare API token before continuing.");
+            return;
+        }
+
+        ShowTelegramSetupStep(_telegramSetupStep + 1);
+    }
+
+    private void OnTelegramSetupBack(object sender, RoutedEventArgs e) =>
+        ShowTelegramSetupStep(_telegramSetupStep - 1);
+
+    private bool HasValidCloudflareAccountId()
+    {
+        var accountId = CloudflareAccountIdBox.Text?.Trim() ?? string.Empty;
+        return accountId.Length == 32 && accountId.All(Uri.IsHexDigit);
+    }
+
+    private void ShowTelegramSetupStep(int step)
+    {
+        _telegramSetupStep = Math.Clamp(step, 1, 4);
+        TelegramSetupStepText.Text =
+            $"Step {_telegramSetupStep} of 4 · {TelegramStepTitles[_telegramSetupStep - 1]}";
+
+        TelegramBotsStep.Visibility = Visible(_telegramSetupStep == 1);
+        TelegramAccountStep.Visibility = Visible(_telegramSetupStep == 2);
+        TelegramTokenStep.Visibility = Visible(_telegramSetupStep == 3);
+        TelegramDeployStep.Visibility = Visible(_telegramSetupStep == 4);
+
+        var active = (Brush)FindResource("AccentBrush");
+        var pending = (Brush)FindResource("DividerBrush");
+        var indicators = new[]
+        {
+            TelegramStep1Indicator,
+            TelegramStep2Indicator,
+            TelegramStep3Indicator,
+            TelegramStep4Indicator,
+        };
+        for (var index = 0; index < indicators.Length; index++)
+            indicators[index].Background = index < _telegramSetupStep ? active : pending;
+
+        if (_telegramSetupStep == 4)
+        {
+            var accountId = CloudflareAccountIdBox.Text.Trim();
+            var maskedAccount = accountId.Length == 32
+                ? $"{accountId[..6]}…{accountId[^4..]}"
+                : "not entered";
+            TelegramSetupReviewText.Text =
+                $"Ready for Cloudflare account {maskedAccount}. Both Telegram bot tokens and the one-time API token are present.";
+        }
+    }
+
     /// <summary>
     /// Einrichten und Bedienen sind zwei Zustaende, nicht zwei Haelften einer
     /// Seite: solange nichts steht, gibt es nichts zu bedienen - und sobald es
@@ -841,20 +1028,32 @@ public partial class MasterWindow : ChromeWindow
     {
         _telegramSetupPinned = true;
         TelegramSetupPanel.Visibility = Visibility.Visible;
+        ShowTelegramSetupStep(1);
     }
 
     private void OnOpenBotFather(object sender, RoutedEventArgs e) =>
         OpenExternal("https://t.me/BotFather");
 
-    private void OnOpenCloudflareToken(object sender, RoutedEventArgs e) =>
+    private void OnOpenCloudflareToken(object sender, RoutedEventArgs e)
+    {
+        var accountId = HasValidCloudflareAccountId()
+            ? Uri.EscapeDataString(CloudflareAccountIdBox.Text.Trim())
+            : "%2A";
         OpenExternal(
             "https://dash.cloudflare.com/profile/api-tokens?" +
             "permissionGroupKeys=%5B%7B%22key%22%3A%22workers_scripts%22%2C%22type%22%3A%22edit%22%7D%2C" +
             "%7B%22key%22%3A%22workers_kv_storage%22%2C%22type%22%3A%22edit%22%7D%5D" +
-            "&accountId=%2A&zoneId=all&name=Monkey%20Telegram%20Setup");
+            $"&accountId={accountId}&zoneId=all&name=Monkey%20Telegram%20Setup");
+    }
 
     private void OnOpenCloudflareDashboard(object sender, RoutedEventArgs e) =>
         OpenExternal("https://dash.cloudflare.com/?to=/:account/workers-and-pages");
+
+    private void OnOpenCloudflareAccountDocs(object sender, RoutedEventArgs e) =>
+        OpenExternal("https://developers.cloudflare.com/fundamentals/account/find-account-and-zone-ids/");
+
+    private void OnOpenCloudflareTokenDocs(object sender, RoutedEventArgs e) =>
+        OpenExternal("https://developers.cloudflare.com/fundamentals/api/get-started/create-token/");
 
     private async void OnTelegramDeploy(object sender, RoutedEventArgs e)
     {
@@ -865,9 +1064,9 @@ public partial class MasterWindow : ChromeWindow
         }
 
         var accountId = CloudflareAccountIdBox.Text?.Trim();
-        if (string.IsNullOrEmpty(accountId))
+        if (!HasValidCloudflareAccountId())
         {
-            Show(false, "Copy the Account ID from the Cloudflare dashboard.");
+            Show(false, "The Cloudflare Account ID must contain exactly 32 hexadecimal characters.");
             return;
         }
 
@@ -877,7 +1076,7 @@ public partial class MasterWindow : ChromeWindow
             return;
         }
 
-        await SendAsync(new Request
+        var connected = await SendAsync(new Request
         {
             Type = RequestType.TelegramDeploy,
             Password = MasterPassword.Password,
@@ -893,6 +1092,8 @@ public partial class MasterWindow : ChromeWindow
         // Auch Bot-Tokens bleiben nach keinem Versuch im Fenster liegen.
         MonkeyTokenBox.Clear();
         FriendTokenBox.Clear();
+
+        if (!connected) ShowTelegramSetupStep(1);
     }
 
     /// <summary>
@@ -1117,10 +1318,23 @@ public partial class MasterWindow : ChromeWindow
     /// </summary>
     private void Show(bool ok, string message)
     {
+        _toastTimer.Stop();
         MessageBorder.Background = (Brush)FindResource(ok ? "SuccessBrush" : "DangerBrush");
+        MessageBorder.BorderBrush = (Brush)FindResource(ok ? "SuccessBorderBrush" : "DangerBorderBrush");
         MessageText.Foreground = (Brush)FindResource(ok ? "SuccessTextBrush" : "DangerTextBrush");
         MessageText.Text = message;
         MessageBorder.Visibility = Visibility.Visible;
+
+        _toastTimer.Interval = TimeSpan.FromSeconds(ok ? 5 : 8);
+        _toastTimer.Start();
+    }
+
+    private void OnDismissToast(object sender, RoutedEventArgs e) => DismissToast();
+
+    private void DismissToast()
+    {
+        _toastTimer.Stop();
+        MessageBorder.Visibility = Visibility.Collapsed;
     }
 
     private static string FormatSpan(double seconds)

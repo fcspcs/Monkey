@@ -116,6 +116,32 @@ public partial class WizardWindow : ChromeWindow
 
     // ----------------------------------------------------------------- Actions
 
+    /// <summary>
+    /// Beide Felder bekommen denselben Vorschlag und werden enttarnt: Das
+    /// Passwort soll ja gerade nicht auf diesem Rechner bleiben, sondern
+    /// notiert oder einer Vertrauensperson uebergeben werden.
+    /// </summary>
+    private void OnGeneratePassword(object sender, RoutedEventArgs e)
+    {
+        var generated = PasswordGenerator.Create();
+        PasswordBox1.Password = generated;
+        PasswordBox2.Password = generated;
+        PasswordBox1.RevealSecret();
+        PasswordBox2.RevealSecret();
+    }
+
+    private void OnCopyGeneratedPassword(object sender, RoutedEventArgs e)
+    {
+        if (PasswordBox1.Password.Length == 0)
+        {
+            Fail("There is no password to copy yet - type or generate one first.");
+            return;
+        }
+
+        try { Clipboard.SetText(PasswordBox1.Password); }
+        catch (Exception ex) { Fail($"Could not copy to the clipboard: {ex.Message}"); }
+    }
+
     private async void OnAction(object sender, RoutedEventArgs e)
     {
         if (_busy) return;

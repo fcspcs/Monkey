@@ -29,6 +29,7 @@
   <!-- Dasselbe Aussehen wie das Steuerpult - siehe Monkey.Agent.csproj. -->
   <ItemGroup>
     <Compile Include="..\Monkey.Ui\ChromeWindow.cs" Link="ChromeWindow.cs" />
+    <Compile Include="..\Monkey.Ui\SecretBox.cs" Link="SecretBox.cs" />
     <Page Include="..\Monkey.Ui\Theme.xaml" Link="Theme.xaml" />
   </ItemGroup>
 

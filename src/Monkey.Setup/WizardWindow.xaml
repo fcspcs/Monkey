@@ -97,10 +97,19 @@
                             </Grid.RowDefinitions>
 
                             <TextBlock Grid.Row="0" Grid.Column="0" Text="Password" Style="{StaticResource RowLabel}" Width="110" Margin="0,0,12,5"/>
-                            <PasswordBox Grid.Row="0" Grid.Column="1" x:Name="PasswordBox1" Width="270" HorizontalAlignment="Left" Margin="0,0,0,5"/>
+                            <ui:SecretBox Grid.Row="0" Grid.Column="1" x:Name="PasswordBox1" Width="336" HorizontalAlignment="Left" Margin="0,0,0,5"/>
                             <TextBlock Grid.Row="1" Grid.Column="0" Text="Repeat" Style="{StaticResource RowLabel}" Width="110" Margin="0,5,12,0"/>
-                            <PasswordBox Grid.Row="1" Grid.Column="1" x:Name="PasswordBox2" Width="270" HorizontalAlignment="Left" Margin="0,5,0,0"/>
+                            <ui:SecretBox Grid.Row="1" Grid.Column="1" x:Name="PasswordBox2" Width="336" HorizontalAlignment="Left" Margin="0,5,0,0"/>
                         </Grid>
+                        <StackPanel Orientation="Horizontal" Margin="122,10,0,0">
+                            <Button Content="Generate a strong password"
+                                    Style="{StaticResource SubtleButton}"
+                                    Click="OnGeneratePassword" Margin="-10,0,0,0"/>
+                            <Button Content="Copy"
+                                    Style="{StaticResource ChipButton}"
+                                    Click="OnCopyGeneratedPassword" Margin="4,0,0,0"
+                                    VerticalAlignment="Center"/>
+                        </StackPanel>
 
                         <Border x:Name="ExistingPanel" Visibility="Collapsed" Margin="0,20,0,0"
                                 Background="{StaticResource AccentSoftBrush}"
@@ -116,7 +125,7 @@
                                            Text="To replace it, enter the master password you set before."/>
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="Current" Style="{StaticResource RowLabel}" Width="110"/>
-                                    <PasswordBox x:Name="ExistingPasswordBox" Width="270"/>
+                                    <ui:SecretBox x:Name="ExistingPasswordBox" Width="336"/>
                                 </StackPanel>
                             </StackPanel>
                         </Border>
@@ -129,7 +138,7 @@
                                    Text="The service only lets go once it sees the master password. After that the service, the program files and your stored time are removed."/>
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="Master password" Style="{StaticResource RowLabel}" Width="140"/>
-                            <PasswordBox x:Name="UninstallPasswordBox" Width="270"/>
+                            <ui:SecretBox x:Name="UninstallPasswordBox" Width="336"/>
                         </StackPanel>
                     </StackPanel>
 

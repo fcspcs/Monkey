@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Security.Principal;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -78,7 +79,7 @@ public partial class MasterWindow : ChromeWindow
         BuildDisplayChoices();
         LoadDisplaySettings();
         GenerateTelegramBotNames();
-        ShowTelegramSetupStep(1);
+        ShowTelegramSetupStep(0);
 
         GimmickBox.SizeChanged += (_, _) => SizeGimmick();
 
@@ -839,13 +840,69 @@ public partial class MasterWindow : ChromeWindow
         });
     }
 
+    /// <summary>
+    /// Beide Felder bekommen denselben Vorschlag und werden enttarnt: Wer das
+    /// Passwort nicht ablesen kann, kann es weder notieren noch weitergeben -
+    /// und an eine Vertrauensperson weitergeben ist der ganze Zweck.
+    /// </summary>
+    private void OnGenerateNewPassword(object sender, RoutedEventArgs e)
+    {
+        var generated = PasswordGenerator.Create();
+        NewPassword.Password = generated;
+        NewPasswordRepeat.Password = generated;
+        NewPassword.RevealSecret();
+        NewPasswordRepeat.RevealSecret();
+        Show(true, "Password generated and shown. Copy it or write it down before you change.");
+    }
+
+    private void OnCopyNewPassword(object sender, RoutedEventArgs e)
+    {
+        if (NewPassword.Password.Length == 0)
+        {
+            Show(false, "There is no new password to copy yet.");
+            return;
+        }
+
+        try
+        {
+            Clipboard.SetText(NewPassword.Password);
+            Show(true, "New password copied. Store it somewhere safe.");
+        }
+        catch (Exception ex)
+        {
+            Show(false, $"Could not copy to the clipboard: {ex.Message}");
+        }
+    }
+
+    // --------------------------------------------------------- Kopierfelder
+
+    private void OnSelectAllOnFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.TextBox box) box.SelectAll();
+    }
+
+    /// <summary>
+    /// Der erste Klick in ein Kopierfeld markiert alles. Ohne diesen Umweg
+    /// setzt WPF nach dem Fokuswechsel noch die Einfuegemarke und macht die
+    /// Markierung sofort wieder zunichte.
+    /// </summary>
+    private void OnReadOnlyFieldClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.TextBox { IsKeyboardFocusWithin: false } box) return;
+
+        box.Focus();
+        box.SelectAll();
+        e.Handled = true;
+    }
+
     // ------------------------------------------------------------- Telegram
 
     private static readonly string[] TelegramStepTitles =
     [
-        "Telegram bots",
+        "Monkey's bot",
+        "The friend's bot",
         "Cloudflare account",
-        "Cloudflare API token",
+        "One-time API token",
         "Review and connect",
     ];
 
@@ -933,7 +990,7 @@ public partial class MasterWindow : ChromeWindow
     }
 
     private static string SetPassword(
-        System.Windows.Controls.PasswordBox target, string value, string label)
+        Monkey.Ui.SecretBox target, string value, string label)
     {
         target.Password = value;
         return label;
@@ -946,22 +1003,30 @@ public partial class MasterWindow : ChromeWindow
         return label;
     }
 
+    private void OnTelegramSetupStart(object sender, RoutedEventArgs e) =>
+        ShowTelegramSetupStep(1);
+
     private void OnTelegramSetupNext(object sender, RoutedEventArgs e)
     {
-        if (_telegramSetupStep == 1 &&
-            (MonkeyTokenBox.Password.Length == 0 || FriendTokenBox.Password.Length == 0))
+        if (_telegramSetupStep == 1 && MonkeyTokenBox.Password.Trim().Length == 0)
         {
-            Show(false, "Create both bots first and paste both tokens before continuing.");
+            Show(false, "Create Monkey's bot first and paste its token before continuing.");
             return;
         }
 
-        if (_telegramSetupStep == 2 && !HasValidCloudflareAccountId())
+        if (_telegramSetupStep == 2 && FriendTokenBox.Password.Trim().Length == 0)
+        {
+            Show(false, "Create the friend's bot first and paste its token before continuing.");
+            return;
+        }
+
+        if (_telegramSetupStep == 3 && !HasValidCloudflareAccountId())
         {
             Show(false, "The Cloudflare Account ID must contain exactly 32 hexadecimal characters.");
             return;
         }
 
-        if (_telegramSetupStep == 3 && CloudflareApiTokenBox.Password.Trim().Length < 20)
+        if (_telegramSetupStep == 4 && CloudflareApiTokenBox.Password.Trim().Length < 20)
         {
             Show(false, "Paste the complete Cloudflare API token before continuing.");
             return;
@@ -979,16 +1044,23 @@ public partial class MasterWindow : ChromeWindow
         return accountId.Length == 32 && accountId.All(Uri.IsHexDigit);
     }
 
+    /// <summary>Schritt 0 ist der Einstieg: erklaeren statt abfragen.</summary>
     private void ShowTelegramSetupStep(int step)
     {
-        _telegramSetupStep = Math.Clamp(step, 1, 4);
-        TelegramSetupStepText.Text =
-            $"Step {_telegramSetupStep} of 4 · {TelegramStepTitles[_telegramSetupStep - 1]}";
+        _telegramSetupStep = Math.Clamp(step, 0, 5);
 
-        TelegramBotsStep.Visibility = Visible(_telegramSetupStep == 1);
-        TelegramAccountStep.Visibility = Visible(_telegramSetupStep == 2);
-        TelegramTokenStep.Visibility = Visible(_telegramSetupStep == 3);
-        TelegramDeployStep.Visibility = Visible(_telegramSetupStep == 4);
+        TelegramIntroPanel.Visibility = Visible(_telegramSetupStep == 0);
+        TelegramStepsPanel.Visibility = Visible(_telegramSetupStep > 0);
+        if (_telegramSetupStep == 0) return;
+
+        TelegramSetupStepText.Text =
+            $"Step {_telegramSetupStep} of 5 · {TelegramStepTitles[_telegramSetupStep - 1]}";
+
+        TelegramMonkeyBotStep.Visibility = Visible(_telegramSetupStep == 1);
+        TelegramFriendBotStep.Visibility = Visible(_telegramSetupStep == 2);
+        TelegramAccountStep.Visibility = Visible(_telegramSetupStep == 3);
+        TelegramTokenStep.Visibility = Visible(_telegramSetupStep == 4);
+        TelegramDeployStep.Visibility = Visible(_telegramSetupStep == 5);
 
         var active = (Brush)FindResource("AccentBrush");
         var pending = (Brush)FindResource("DividerBrush");
@@ -998,11 +1070,12 @@ public partial class MasterWindow : ChromeWindow
             TelegramStep2Indicator,
             TelegramStep3Indicator,
             TelegramStep4Indicator,
+            TelegramStep5Indicator,
         };
         for (var index = 0; index < indicators.Length; index++)
             indicators[index].Background = index < _telegramSetupStep ? active : pending;
 
-        if (_telegramSetupStep == 4)
+        if (_telegramSetupStep == 5)
         {
             var accountId = CloudflareAccountIdBox.Text.Trim();
             var maskedAccount = accountId.Length == 32
@@ -1032,7 +1105,7 @@ public partial class MasterWindow : ChromeWindow
     {
         _telegramSetupPinned = true;
         TelegramSetupPanel.Visibility = Visibility.Visible;
-        ShowTelegramSetupStep(1);
+        ShowTelegramSetupStep(0);
     }
 
     private void OnOpenBotFather(object sender, RoutedEventArgs e) =>

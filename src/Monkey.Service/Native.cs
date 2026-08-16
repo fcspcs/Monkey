@@ -13,6 +13,7 @@ internal static class Native
     }
 
     private const int WTSSessionInfoEx = 25;
+    private const int WTSUserName = 5;
 
     /// <summary>Auf Windows 8 und neuer: 0 == gesperrt, 1 == entsperrt.</summary>
     public const int WTS_SESSIONSTATE_LOCK = 0;
@@ -70,7 +71,15 @@ internal static class Native
     public static ulong GetUnbiasedInterruptTime() =>
         QueryUnbiasedInterruptTime(out var value) ? value : (ulong)Environment.TickCount64 * 10_000UL;
 
-    public readonly record struct SessionInfo(int SessionId, WtsConnectState State, bool Locked);
+    /// <summary>
+    /// UserName ist leer, solange in der Sitzung niemand angemeldet ist - so
+    /// sieht der Anmeldebildschirm aus, den Windows nach dem Abmelden stehen
+    /// laesst. Er ist aktiv und ungesperrt, aber davor sitzt niemand.
+    /// </summary>
+    public readonly record struct SessionInfo(int SessionId, WtsConnectState State, bool Locked, string UserName)
+    {
+        public bool HasUser => !string.IsNullOrEmpty(UserName);
+    }
 
     public static List<SessionInfo> EnumerateSessions()
     {
@@ -86,7 +95,8 @@ internal static class Native
                 var entry = Marshal.PtrToStructure<WTS_SESSION_INFO>(buffer + i * size);
                 // Sitzung 0 ist die isolierte Dienstsitzung, dort sitzt nie ein Mensch.
                 if (entry.SessionId == 0) continue;
-                result.Add(new SessionInfo(entry.SessionId, entry.State, IsSessionLocked(entry.SessionId)));
+                result.Add(new SessionInfo(entry.SessionId, entry.State,
+                    IsSessionLocked(entry.SessionId), QueryUserName(entry.SessionId)));
             }
         }
         finally
@@ -95,6 +105,21 @@ internal static class Native
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Angemeldeter Benutzer der Sitzung, sonst leer. Am Anmeldebildschirm
+    /// liefert Windows eine leere Zeichenkette - genau daran erkennen wir, dass
+    /// dort niemand sitzt.
+    /// </summary>
+    private static string QueryUserName(int sessionId)
+    {
+        if (!WTSQuerySessionInformationW(WTS_CURRENT_SERVER_HANDLE, sessionId, WTSUserName,
+                out var buffer, out _))
+            return string.Empty;
+
+        try { return Marshal.PtrToStringUni(buffer) ?? string.Empty; }
+        finally { WTSFreeMemory(buffer); }
     }
 
     private static bool IsSessionLocked(int sessionId)

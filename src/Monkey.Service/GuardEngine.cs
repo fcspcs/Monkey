@@ -102,7 +102,10 @@ internal sealed class GuardEngine
 
             // Einmal pro Tick abfragen, das Ergebnis wandert durch alle Schritte.
             var all = Native.EnumerateSessions();
-            var active = all.Where(s => s.State == Native.WtsConnectState.Active)
+            // Nur Sitzungen mit angemeldetem Benutzer. Der Anmeldebildschirm ist
+            // ebenfalls eine aktive Sitzung - wuerde er mitzaehlen, gaelte jede
+            // Abmeldung als Anmeldung und verbrauchte danach munter Guthaben.
+            var active = all.Where(s => s.State == Native.WtsConnectState.Active && s.HasUser)
                             .Select(s => s.SessionId).ToHashSet();
 
             var freshLogin = active.Except(_knownSessions).Any();
@@ -225,6 +228,13 @@ internal sealed class GuardEngine
         foreach (var session in sessions)
         {
             if (session.State != Native.WtsConnectState.Active) continue;
+
+            // Ohne angemeldeten Benutzer sitzt dort niemand - das ist der
+            // Anmeldebildschirm nach dem Abmelden. Er gilt nicht als gesperrt,
+            // und ein Agent, der einen Bildschirmschoner melden koennte, laeuft
+            // dort auch nicht. Ohne diese Pruefung liefe das Guthaben weiter.
+            if (!session.HasUser) continue;
+
             if (session.Locked && _state.Config.PauseOnLock) continue;
 
             if (_state.Config.PauseOnScreensaver

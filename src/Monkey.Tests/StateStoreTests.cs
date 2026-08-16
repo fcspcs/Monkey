@@ -1,3 +1,5 @@
+using System.Security.AccessControl;
+using System.Security.Principal;
 using Monkey.Core;
 using Monkey.Service;
 using Xunit;
@@ -6,6 +8,48 @@ namespace Monkey.Tests;
 
 public sealed class StateStoreTests
 {
+    [Fact]
+    public void Harden_UsesOnlyAllowRules()
+    {
+        // Der Reset-Fehler bis v1.3.3: Ein Schreibverbot fuer die
+        // Administratorengruppe traf auch das LocalSystem-Token des Dienstes,
+        // denn das traegt denselben Gruppen-SID - und Deny schlaegt Allow.
+        // Der Dienst konnte nie speichern, jeder Neustart warf alles weg.
+        Assert.All(StateStore.HardenedRules(),
+            rule => Assert.Equal(AccessControlType.Allow, rule.AccessControlType));
+    }
+
+    [Fact]
+    public void Harden_GrantsSystemFullControl()
+    {
+        var system = new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null);
+        var rule = Assert.Single(StateStore.HardenedRules(),
+            r => system.Equals(r.IdentityReference));
+
+        Assert.Equal(FileSystemRights.FullControl, rule.FileSystemRights);
+    }
+
+    [Fact]
+    public void Save_RemembersFailure_And_ClearsItOnSuccess()
+    {
+        TestEnv.FreshDataDir();
+        var store = new StateStore();
+
+        // Ein Ordner blockiert den Platz der Temporaerdatei - das Schreiben muss
+        // scheitern, und der Fehler darf nicht stumm untergehen.
+        Directory.CreateDirectory(Paths.StateFile + ".tmp");
+        store.Save(TestEnv.NewState(s => s.BalanceSeconds = 4321));
+
+        Assert.NotNull(store.LastSaveError);
+        Assert.False(File.Exists(Paths.StateFile));
+
+        Directory.Delete(Paths.StateFile + ".tmp");
+        store.Save(TestEnv.NewState(s => s.BalanceSeconds = 4321));
+
+        Assert.Null(store.LastSaveError);
+        Assert.Equal(4321, store.Load().BalanceSeconds);
+    }
+
     [Fact]
     public void SaveThenLoad_RoundTrips()
     {

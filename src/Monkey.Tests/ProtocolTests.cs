@@ -54,6 +54,7 @@ public sealed class ProtocolTests
             BalanceSeconds = 100,
             Paused = true,
             EvolutionStage = 3,
+            PersistenceError = "Platte voll",
             TelegramEnabled = true,
             TelegramWorkerHost = "x.workers.dev",
             TelegramWorkerManaged = true,
@@ -68,6 +69,7 @@ public sealed class ProtocolTests
         Assert.Equal(100, restored.Status!.BalanceSeconds);
         Assert.True(restored.Status.Paused);
         Assert.Equal(3, restored.Status.EvolutionStage);
+        Assert.Equal("Platte voll", restored.Status.PersistenceError);
         Assert.True(restored.Status.TelegramEnabled);
         Assert.Equal("x.workers.dev", restored.Status.TelegramWorkerHost);
         Assert.True(restored.Status.TelegramWorkerManaged);

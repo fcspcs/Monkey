@@ -109,6 +109,13 @@ public sealed class StatusDto
     public GuardConfig? Config { get; set; }
 
     /// <summary>
+    /// Letzter Speicherfehler des Dienstes, null solange alles klappt. Muss dem
+    /// Master auffallen: ein Dienst, der nicht speichern kann, verliert beim
+    /// naechsten Neustart alles seit dem letzten erfolgreichen Speichern.
+    /// </summary>
+    public string? PersistenceError { get; set; }
+
+    /// <summary>
     /// Version des laufenden Dienstes. Der Agent vergleicht sie mit seiner
     /// eigenen und startet sich nach einem Update selbst neu.
     /// </summary>

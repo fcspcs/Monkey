@@ -79,9 +79,12 @@
                     sind die Kanten des Bildes die einzige Stelle, an der es
                     nicht in Schwarz ausklingt - dort darf nichts fehlen.
 
-                    Senkrecht darf sie dagegen auslaufen: oben und unten legt
-                    sich ein Verlauf in die Farbe der Spalte darueber, damit der
-                    Anschnitt keine sichtbare Kante hinterlaesst.
+                    Senkrecht darf sie auslaufen, aber nur mittig verankert: Der
+                    Affe sitzt in der Mitte der hohen Vorlage, das obere Drittel
+                    ist reines Schwarz. Oben ausgerichtet zeigte der Anschnitt
+                    genau dieses Schwarz - und der Affe war weg. Oben und unten
+                    legt sich ein Verlauf in die Farbe der Spalte darueber, damit
+                    der Anschnitt keine sichtbare Kante hinterlaesst.
                 -->
                 <Grid x:Name="GimmickBox" Grid.Row="2" Margin="0,22,0,0"
                       ClipToBounds="True"
@@ -89,7 +92,7 @@
                     <Image x:Name="Gimmick"
                            Stretch="Fill"
                            HorizontalAlignment="Stretch"
-                           VerticalAlignment="Top"
+                           VerticalAlignment="Center"
                            RenderOptions.BitmapScalingMode="HighQuality"/>
                     <Border>
                         <Border.Background>

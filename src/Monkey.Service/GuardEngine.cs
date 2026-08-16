@@ -902,6 +902,7 @@ internal sealed class GuardEngine
             CapMinutes = _state.Config.CapMinutes,
             ClockTamperEvents = _state.ClockTamperEvents,
             PasswordConfigured = _state.HasPassword,
+            PersistenceError = _store.LastSaveError,
             Config = _state.Config.Clone(),
             ServiceVersion = UpdateWorker.CurrentVersionText,
             SignedUpdatesAvailable = UpdateWorker.SignedUpdatesAvailable,

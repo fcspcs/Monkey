@@ -36,10 +36,14 @@ internal static class SelfProtect
     // umkonfigurieren, loeschen - und vor allem nicht die Rechte selbst aendern
     // (kein WD/WO). Eigentuemer ist SYSTEM; nur als Eigentuemer laesst sich diese
     // Sperre spaeter wieder aendern.
-    private const string LockedSddl =
-        "O:SYG:SYD:(D;;DCWPDTSD;;;IU)(D;;DCWPDTSD;;;SU)(D;;DCWPDTSD;;;BA)" +
-        "(A;;CCLCSWLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)" +
-        "(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRC;;;BA)";
+    //
+    // Bewusst ohne Deny-Eintraege: Das Token von LocalSystem traegt auch den SID
+    // der Administratorengruppe, ein Deny fuer BA traefe deshalb SYSTEM selbst -
+    // der Dienst koennte sich beim signierten Selbst-Update nicht mehr stoppen.
+    // Was BA nicht ausdruecklich erlaubt ist, bleibt ohnehin verwehrt.
+    internal const string LockedSddl =
+        "O:SYG:SYD:(A;;CCLCSWLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)" +
+        "(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCLCSWRPLOCRRC;;;BA)";
 
     // Offen: der Normalzustand einer Dienst-Sicherheitsbeschreibung, damit sich
     // der Dienst nach autorisiertem Teardown regulaer stoppen und loeschen laesst.
@@ -201,21 +205,13 @@ internal static class SelfProtect
             security.AddAccessRule(new RegistryAccessRule(
                 system, RegistryRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
 
-            // Administratoren duerfen lesen, aber nicht aendern oder loeschen. Das
-            // verhindert das einfache Abschalten ueber Start=4.
-            //
-            // Wichtig: hier NICHT RegistryRights.WriteKey verweigern. Dieser Wert
-            // schliesst ReadPermissions (READ_CONTROL) mit ein, und genau das wird
-            // zum Oeffnen des Schluessels gebraucht - ein solcher Deny sperrt also
-            // versehentlich auch das Lesen aus, sodass der Dienst fuer die eigenen
-            // Werkzeuge unsichtbar wird. Deshalb nur die einzelnen Schreibrechte.
+            // Administratoren und Benutzer duerfen lesen, mehr steht nicht in der
+            // Liste - das verhindert das einfache Abschalten ueber Start=4. Kein
+            // Deny fuer die Schreibrechte: LocalSystem traegt den Administratoren-
+            // SID im Token, ein Deny traefe also auch den Dienst und die
+            // Dienstverwaltung selbst. Nicht Erlaubtes bleibt auch so verwehrt.
             security.AddAccessRule(new RegistryAccessRule(
                 admins, RegistryRights.ReadKey, inherit, PropagationFlags.None, AccessControlType.Allow));
-            security.AddAccessRule(new RegistryAccessRule(
-                admins, RegistryRights.SetValue | RegistryRights.CreateSubKey
-                        | RegistryRights.CreateLink | RegistryRights.Delete
-                        | RegistryRights.ChangePermissions | RegistryRights.TakeOwnership,
-                inherit, PropagationFlags.None, AccessControlType.Deny));
 
             security.AddAccessRule(new RegistryAccessRule(
                 users, RegistryRights.ReadKey, inherit, PropagationFlags.None, AccessControlType.Allow));
@@ -263,8 +259,6 @@ internal static class SelfProtect
             var users = new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null);
 
             const InheritanceFlags inherit = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
-            const FileSystemRights forbidden = FileSystemRights.Delete | FileSystemRights.DeleteSubdirectoriesAndFiles
-                | FileSystemRights.Write | FileSystemRights.ChangePermissions | FileSystemRights.TakeOwnership;
 
             var security = new DirectorySecurity();
             security.SetOwner(system);
@@ -273,17 +267,15 @@ internal static class SelfProtect
             security.AddAccessRule(new FileSystemAccessRule(
                 system, FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
 
-            // Jeder darf lesen und ausfuehren (der Agent liegt hier), aber niemand
-            // ausser SYSTEM darf die Programmdateien aendern oder loeschen.
+            // Jeder darf lesen und ausfuehren (der Agent liegt hier), aendern und
+            // loeschen darf nur SYSTEM - auch fuers signierte Selbst-Update, das
+            // die Programmdateien als LocalSystem tauscht. Deshalb reine
+            // Allow-Liste: ein Deny fuer Administratoren traefe ueber den
+            // Gruppen-SID im LocalSystem-Token genau diesen Updatepfad.
             security.AddAccessRule(new FileSystemAccessRule(
                 admins, FileSystemRights.ReadAndExecute, inherit, PropagationFlags.None, AccessControlType.Allow));
             security.AddAccessRule(new FileSystemAccessRule(
                 users, FileSystemRights.ReadAndExecute, inherit, PropagationFlags.None, AccessControlType.Allow));
-
-            security.AddAccessRule(new FileSystemAccessRule(
-                admins, forbidden, inherit, PropagationFlags.None, AccessControlType.Deny));
-            security.AddAccessRule(new FileSystemAccessRule(
-                users, forbidden, inherit, PropagationFlags.None, AccessControlType.Deny));
 
             new DirectoryInfo(ProgramDir).SetAccessControl(security);
         }

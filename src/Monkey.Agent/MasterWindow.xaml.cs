@@ -218,6 +218,10 @@ public partial class MasterWindow : ChromeWindow
         if (status.ClockTamperEvents > 0)
             StateText.Text += $"  ({status.ClockTamperEvents} clock jump(s) detected)";
 
+        if (status.PersistenceError is { } persistenceError)
+            StateText.Text += $"  Warning: the service can't save its state - balance and settings would be " +
+                              $"lost on the next restart ({persistenceError})";
+
         if (status.Config is { } config)
         {
             GrantBudgetText.Text =

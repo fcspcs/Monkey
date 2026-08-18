@@ -60,6 +60,9 @@ public sealed class ProtocolTests
             TelegramWorkerManaged = true,
             TelegramWorkerVersion = 2,
             SignedUpdatesAvailable = true,
+            UpdateCheckRunning = true,
+            UpdateLastResult = "Already up to date - v1.2.3 is the newest release.",
+            UpdateLastCheckSecondsAgo = 42,
         });
 
         var restored = Response.FromJson(response.ToJson())!;
@@ -75,6 +78,9 @@ public sealed class ProtocolTests
         Assert.True(restored.Status.TelegramWorkerManaged);
         Assert.Equal(2, restored.Status.TelegramWorkerVersion);
         Assert.True(restored.Status.SignedUpdatesAvailable);
+        Assert.True(restored.Status.UpdateCheckRunning);
+        Assert.Equal("Already up to date - v1.2.3 is the newest release.", restored.Status.UpdateLastResult);
+        Assert.Equal(42, restored.Status.UpdateLastCheckSecondsAgo);
     }
 
     [Fact]

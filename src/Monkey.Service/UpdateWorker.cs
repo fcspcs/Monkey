@@ -51,23 +51,44 @@ internal sealed class UpdateWorker(GuardEngine engine) : BackgroundService
         if (publicKeyPem is null)
         {
             Log.Write("Auto-update: no update key embedded in this build - updates stay manual.");
+
+            // Nicht einfach aussteigen: sonst wartet das Fenster nach einem Klick
+            // ewig auf eine Antwort, die niemand mehr gibt. Weckrufe abnehmen und
+            // ehrlich sein, solange der Dienst laeuft.
+            try
+            {
+                while (await engine.UpdateKick.WaitAsync(Timeout.InfiniteTimeSpan, stoppingToken))
+                    engine.ReportUpdateCheck("This build has no update key, so it cannot install releases.");
+            }
+            catch (OperationCanceledException)
+            {
+                // Regulaeres Herunterfahren.
+            }
+
             return;
         }
 
         try
         {
-            await Task.Delay(FirstDelay, stoppingToken);
+            var requested = await WaitForNextRoundAsync(FirstDelay, stoppingToken);
 
             while (!stoppingToken.IsCancellationRequested)
             {
-                if (engine.AutoUpdateEnabled)
+                // Ausgeschaltete Selbstaktualisierung heisst: nicht von allein.
+                // Wer im Fenster drueckt, hat das Master-Passwort vorgezeigt und
+                // meint genau diese eine Pruefung - die laeuft dann trotzdem.
+                if (requested || engine.AutoUpdateEnabled)
                 {
+                    engine.MarkUpdateCheckRunning();
+
+                    string result;
                     try
                     {
-                        await CheckOnceAsync(publicKeyPem, stoppingToken);
+                        result = await CheckOnceAsync(publicKeyPem, requested, stoppingToken);
                     }
                     catch (OperationCanceledException)
                     {
+                        engine.ReportUpdateCheck("The check stopped because the service is shutting down.");
                         throw;
                     }
                     catch (Exception ex)
@@ -75,10 +96,13 @@ internal sealed class UpdateWorker(GuardEngine engine) : BackgroundService
                         // Kein Netz oder GitHub nicht erreichbar ist Alltag - eine
                         // Zeile genuegt, der naechste Versuch kommt von selbst.
                         Log.Write($"Auto-update check failed: {Shorten(ex.Message)}");
+                        result = $"The check failed: {Shorten(ex.Message)}";
                     }
+
+                    engine.ReportUpdateCheck(result);
                 }
 
-                await Task.Delay(CheckInterval, stoppingToken);
+                requested = await WaitForNextRoundAsync(CheckInterval, stoppingToken);
             }
         }
         catch (OperationCanceledException)
@@ -87,10 +111,22 @@ internal sealed class UpdateWorker(GuardEngine engine) : BackgroundService
         }
     }
 
-    private async Task CheckOnceAsync(string publicKeyPem, CancellationToken token)
+    /// <summary>
+    /// Wartet den Takt ab - oder kuerzer, wenn im Fenster nach Updates gefragt
+    /// wurde. True heisst: es war der Knopf, nicht die Uhr.
+    /// </summary>
+    private Task<bool> WaitForNextRoundAsync(TimeSpan interval, CancellationToken token) =>
+        engine.UpdateKick.WaitAsync(interval, token);
+
+    /// <summary>
+    /// Eine Runde. Der Rueckgabewert ist der Satz, der im Fenster stehen soll -
+    /// jeder Ausgang hat einen, auch der langweilige.
+    /// </summary>
+    private async Task<string> CheckOnceAsync(string publicKeyPem, bool requested, CancellationToken token)
     {
         using var release = await GetJsonAsync($"https://api.github.com/repos/{Repo}/releases/latest", 1024 * 1024, token);
-        if (release is null || release.RootElement.ValueKind != JsonValueKind.Object) return;
+        if (release is null || release.RootElement.ValueKind != JsonValueKind.Object)
+            return "GitHub did not answer with a release.";
 
         string? manifestUrl = null, setupUrl = null;
         if (release.RootElement.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
@@ -105,11 +141,14 @@ internal sealed class UpdateWorker(GuardEngine engine) : BackgroundService
         }
 
         // Ein Release ohne signiertes Manifest ist kein Update-Kandidat.
-        if (manifestUrl is null || setupUrl is null) return;
-        if (!IsGitHubHttps(manifestUrl) || !IsGitHubHttps(setupUrl)) return;
+        if (manifestUrl is null || setupUrl is null)
+            return "The latest release carries no signed installer.";
+        if (!IsGitHubHttps(manifestUrl) || !IsGitHubHttps(setupUrl))
+            return "The release points somewhere other than GitHub - ignored.";
 
         using var manifest = await GetJsonAsync(manifestUrl, 64 * 1024, token);
-        if (manifest is null || manifest.RootElement.ValueKind != JsonValueKind.Object) return;
+        if (manifest is null || manifest.RootElement.ValueKind != JsonValueKind.Object)
+            return "The signed manifest could not be read.";
 
         var versionText = ReadString(manifest.RootElement, "version");
         var sha256 = ReadString(manifest.RootElement, "sha256")?.ToLowerInvariant();
@@ -117,21 +156,28 @@ internal sealed class UpdateWorker(GuardEngine engine) : BackgroundService
 
         if (versionText is null || signatureText is null ||
             sha256 is null || sha256.Length != 64 || !sha256.All(Uri.IsHexDigit))
-            return;
+            return "The signed manifest is incomplete.";
 
-        if (!Version.TryParse(versionText, out var remote)) return;
+        if (!Version.TryParse(versionText, out var remote))
+            return "The signed manifest carries no readable version.";
         remote = Normalize(remote);
 
         // Nur strikt neuer. Das blockt auch das Wiedereinspielen einer alten,
         // einst gueltig signierten Version (Downgrade).
-        if (remote <= CurrentVersion()) return;
-        if (_attempted is not null && remote <= _attempted) return;
+        if (remote <= CurrentVersion())
+            return $"Already up to date - v{CurrentVersionText} is the newest release.";
+
+        // Eine Fassung, an der schon einmal etwas schiefging, versucht der Takt
+        // nicht endlos weiter. Wer von Hand fragt, darf es trotzdem noch einmal
+        // wissen wollen - sonst haengt die Anzeige bis zum naechsten Dienststart.
+        if (!requested && _attempted is not null && remote <= _attempted)
+            return $"v{versionText} was already attempted - waiting for the next service start.";
 
         // Signatur zuerst - was nicht vom Projektschluessel unterschrieben ist,
         // wird gar nicht erst heruntergeladen.
         byte[] signature;
         try { signature = Convert.FromBase64String(signatureText); }
-        catch (FormatException) { return; }
+        catch (FormatException) { return $"The signature of v{versionText} is unreadable - ignored."; }
 
         var payload = Encoding.ASCII.GetBytes($"MonkeyUpdate.v1\n{versionText}\n{sha256}\n");
         using (var ecdsa = ECDsa.Create())
@@ -140,7 +186,7 @@ internal sealed class UpdateWorker(GuardEngine engine) : BackgroundService
             if (!ecdsa.VerifyData(payload, signature, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence))
             {
                 Log.Write($"Auto-update: manifest for v{versionText} has a BAD signature - ignored.");
-                return;
+                return $"v{versionText} is not signed by the project key - ignored.";
             }
         }
 
@@ -157,7 +203,7 @@ internal sealed class UpdateWorker(GuardEngine engine) : BackgroundService
         {
             Log.Write("Auto-update: downloaded installer does not match the signed hash - discarded.");
             TryDelete(stagedSetup);
-            return;
+            return $"The download of v{versionText} did not match the signed hash - discarded.";
         }
 
         _attempted = remote;
@@ -172,6 +218,8 @@ internal sealed class UpdateWorker(GuardEngine engine) : BackgroundService
             CreateNoWindow = true,
             ArgumentList = { "update" },
         });
+
+        return $"v{versionText} is verified and installing now - the service restarts by itself.";
     }
 
     // -------------------------------------------------------------- Werkzeug

@@ -86,6 +86,26 @@ internal sealed class GuardEngine
     /// </summary>
     public SemaphoreSlim TelegramKick { get; } = new(0, 1);
 
+    /// <summary>
+    /// Weckruf fuer den Update-Pruefer. Er schlaeft sonst sechs Stunden; wer im
+    /// Fenster auf den Knopf drueckt, will nicht so lange warten.
+    /// </summary>
+    public SemaphoreSlim UpdateKick { get; } = new(0, 1);
+
+    private bool _updateCheckRunning;
+    private DateTimeOffset? _updateCheckStarted;
+    private string? _updateLastResult;
+    private DateTimeOffset? _updateLastCheck;
+
+    /// <summary>
+    /// So lange darf eine Pruefung hoechstens laufen. Danach gilt sie als
+    /// verschollen: ein Pruefer, der nicht mehr antwortet - abgestuerzt, oder in
+    /// einem Konsolentestlauf gar nicht erst gestartet - wuerde den Knopf sonst
+    /// fuer immer grau lassen. Grosszuegig gewaehlt, ein Installer darf ueber
+    /// eine langsame Leitung dauern.
+    /// </summary>
+    private static readonly TimeSpan UpdateCheckTimeout = TimeSpan.FromMinutes(10);
+
     private readonly record struct AgentReport(DateTimeOffset LastSeen, bool ScreensaverRunning, bool DisplayOff);
 
     public GuardEngine(Func<List<Native.SessionInfo>>? sessions = null)
@@ -506,6 +526,9 @@ internal sealed class GuardEngine
                 case RequestType.ChangePassword:
                     return HandleChangePassword(request);
 
+                case RequestType.UpdateCheck:
+                    return WithPassword(request.Password, () => BeginUpdateCheck(request.SessionId));
+
                 case RequestType.Unlock:
                     return WithPassword(request.Password, () =>
                     {
@@ -629,6 +652,76 @@ internal sealed class GuardEngine
     public bool AutoUpdateEnabled
     {
         get { lock (_gate) return _state.Config.AutoUpdate; }
+    }
+
+    /// <summary>
+    /// Weckt den Update-Pruefer. Laeuft schon einer, bleibt es bei dem - zwei
+    /// gleichzeitige Pruefungen wuerden dieselbe Datei in denselben Ordner laden.
+    /// Muss unter _gate laufen, damit zwei Klicks nicht beide "gestartet" melden.
+    /// </summary>
+    private Response BeginUpdateCheck(int sessionId)
+    {
+        if (UpdateCheckActive())
+            return Response.Success("A check is already running.", BuildStatus(sessionId));
+
+        _updateCheckRunning = true;
+        _updateCheckStarted = _clock.Now;
+        _updateLastResult = null;
+
+        if (UpdateKick.CurrentCount == 0)
+        {
+            try { UpdateKick.Release(); }
+            catch (SemaphoreFullException) { /* Weckruf steht schon an. */ }
+        }
+
+        Log.Write("Update check requested from the control panel.");
+        return Response.Success("Looking for a newer release …", BuildStatus(sessionId));
+    }
+
+    /// <summary>
+    /// Ergebnis der Pruefung, wie es im Fenster stehen soll. Ruft der Pruefer
+    /// auch nach einem Fehlschlag auf - ein Knopf, der ohne Antwort bleibt, ist
+    /// schlimmer als eine schlechte Nachricht.
+    /// </summary>
+    public void ReportUpdateCheck(string result)
+    {
+        lock (_gate)
+        {
+            _updateCheckRunning = false;
+            _updateLastResult = result;
+            _updateLastCheck = _clock.Now;
+        }
+    }
+
+    /// <summary>
+    /// Der Pruefer meldet sich, bevor er loslegt - auch wenn ihn der Sechs-
+    /// Stunden-Takt geweckt hat und nicht der Knopf. Sonst zeigt das Fenster
+    /// waehrend eines Hintergrundlaufs "keine Pruefung" an.
+    /// </summary>
+    public void MarkUpdateCheckRunning()
+    {
+        lock (_gate)
+        {
+            _updateCheckRunning = true;
+            _updateCheckStarted = _clock.Now;
+        }
+    }
+
+    /// <summary>
+    /// Laeuft noch eine Pruefung? Beantwortet die Frage und raeumt dabei eine
+    /// auf, die nicht mehr wiederkommt. Nur unter _gate aufrufen.
+    /// </summary>
+    private bool UpdateCheckActive()
+    {
+        if (!_updateCheckRunning) return false;
+
+        if (_updateCheckStarted is { } started && _clock.Now - started < UpdateCheckTimeout)
+            return true;
+
+        _updateCheckRunning = false;
+        _updateLastResult = "The check did not report back - please try again.";
+        _updateLastCheck = _clock.Now;
+        return false;
     }
 
     // ------------------------------------------------------------- Telegram
@@ -906,6 +999,11 @@ internal sealed class GuardEngine
             Config = _state.Config.Clone(),
             ServiceVersion = UpdateWorker.CurrentVersionText,
             SignedUpdatesAvailable = UpdateWorker.SignedUpdatesAvailable,
+            UpdateCheckRunning = UpdateCheckActive(),
+            UpdateLastResult = _updateLastResult,
+            UpdateLastCheckSecondsAgo = _updateLastCheck is { } checkedAt
+                ? (_clock.Now - checkedAt).TotalSeconds
+                : null,
             TelegramEnabled = _state.Telegram.Enabled,
             TelegramWorkerHost = _state.Telegram.WorkerUrl is { } workerUrl
                 && Uri.TryCreate(workerUrl, UriKind.Absolute, out var workerUri) ? workerUri.Host : null,

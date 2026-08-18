@@ -179,8 +179,15 @@ is **newer** and **signed with the project's update key**, so a doctored
 "update" can't be used to sneak past the limit — not even by someone who
 controls the network.
 
-Turn it off any time in the control panel. Maintainers and forks must configure
-the signing key once before publishing — `powershell -ExecutionPolicy Bypass -File tools/new-update-key.ps1` walks
+Monkey looks for a new release every six hours. **Check for updates now** in the
+control panel skips the wait and reports what it found. That button does ask for
+the master password — not because the update could be forged, the signature
+settles that, but because installing one restarts the service. Without the
+question it would be a way to interrupt the supervision on demand.
+
+Turn it off any time in the control panel; the button still works when automatic
+installing is off, since pressing it is a decision in itself. Maintainers and
+forks must configure the signing key once before publishing — `powershell -ExecutionPolicy Bypass -File tools/new-update-key.ps1` walks
 through it, and the release workflow refuses to publish an unsigned update.
 
 ---

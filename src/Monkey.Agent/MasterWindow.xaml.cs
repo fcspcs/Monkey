@@ -21,6 +21,11 @@ public partial class MasterWindow : ChromeWindow
     /// <summary>Nach dieser Zeit ohne Tippen wird ein eingegebenes Passwort verworfen.</summary>
     private static readonly TimeSpan PasswordLifetime = TimeSpan.FromSeconds(120);
 
+    /// <summary>Takt und Geduld beim Warten auf das Ergebnis der Update-Pruefung.</summary>
+    private static readonly TimeSpan UpdateCheckPollInterval = TimeSpan.FromSeconds(1);
+
+    private const int UpdateCheckPolls = 180;
+
     private readonly int _sessionId = Process.GetCurrentProcess().SessionId;
     private readonly DispatcherTimer _passwordTimer;
     private readonly DispatcherTimer _toastTimer;
@@ -269,6 +274,8 @@ public partial class MasterWindow : ChromeWindow
                 ? $"Installed version: {version}. Signed automatic updates are available."
                 : $"Installed version: {version}. Signed automatic updates are not configured in this build."
             : string.Empty;
+
+        ShowUpdateCheckState(status);
 
         if (status.TelegramEnabled)
         {
@@ -1353,6 +1360,72 @@ public partial class MasterWindow : ChromeWindow
         });
     }
 
+    /// <summary>
+    /// Die Pruefung laeuft im Dienst weiter, nicht in dieser Anfrage - deshalb
+    /// sagt die Antwort nur "ich sehe nach". Das Ergebnis holt sich das Fenster
+    /// danach aus dem Status ab.
+    /// </summary>
+    private async void OnCheckForUpdates(object sender, RoutedEventArgs e)
+    {
+        if (!RequireMasterPassword()) return;
+
+        if (!await SendAsync(new Request
+            {
+                Type = RequestType.UpdateCheck,
+                Password = MasterPassword.Password,
+            }))
+            return;
+
+        await AwaitUpdateCheckAsync();
+    }
+
+    /// <summary>
+    /// Solange der Dienst prueft, alle Sekunde nachfragen. Die Obergrenze ist
+    /// grosszuegig: Herunterladen des Installers ueber eine langsame Leitung
+    /// darf dauern. Laeuft sie ab, bleibt der letzte bekannte Stand stehen -
+    /// die Pruefung im Dienst laeuft dabei ungestoert weiter.
+    /// </summary>
+    private async Task AwaitUpdateCheckAsync()
+    {
+        for (var i = 0; i < UpdateCheckPolls; i++)
+        {
+            await Task.Delay(UpdateCheckPollInterval);
+
+            var response = await PipeClient.SendAsync(new Request
+            {
+                Type = RequestType.Status,
+                SessionId = _sessionId,
+            });
+
+            if (response?.Status is not { } status) return;
+
+            ShowUpdateCheckState(status);
+
+            if (!status.UpdateCheckRunning) return;
+        }
+    }
+
+    /// <summary>
+    /// Zeigt an, was die Update-Pruefung gerade macht oder zuletzt ergeben hat.
+    /// Ohne eingebetteten Schluessel gibt es nichts zu druecken.
+    /// </summary>
+    private void ShowUpdateCheckState(StatusDto status)
+    {
+        CheckForUpdatesButton.IsEnabled = status.SignedUpdatesAvailable && !status.UpdateCheckRunning;
+
+        var text = status switch
+        {
+            { UpdateCheckRunning: true } => "Looking for a newer release …",
+            { UpdateLastResult: { } result } when status.UpdateLastCheckSecondsAgo is { } ago
+                => $"{result} (checked {FormatAgo(ago)} ago)",
+            { UpdateLastResult: { } result } => result,
+            _ => null,
+        };
+
+        UpdateCheckText.Text = text ?? string.Empty;
+        UpdateCheckText.Visibility = Visible(text is not null);
+    }
+
     private async void OnTelegramOff(object sender, RoutedEventArgs e)
     {
         if (!RequireMasterPassword()) return;
@@ -1442,6 +1515,7 @@ public partial class MasterWindow : ChromeWindow
         ConnectTelegramButton.IsEnabled = !busy;
         CheckWorkerButton.IsEnabled = !busy;
         UpdateWorkerButton.IsEnabled = !busy;
+        CheckForUpdatesButton.IsEnabled = !busy;
         PairMonkeyButton.IsEnabled = !busy;
         PairFriendButton.IsEnabled = !busy;
         TelegramOffButton.IsEnabled = !busy;

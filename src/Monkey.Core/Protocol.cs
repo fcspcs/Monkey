@@ -22,6 +22,15 @@ public static class RequestType
     /// <summary>Autorisierter Abbau aller Sperren, damit sich das Tool entfernen laesst.</summary>
     public const string Unlock = "unlock";
 
+    /// <summary>
+    /// Sofort nach einer neueren Fassung sehen, statt auf den Sechs-Stunden-Takt
+    /// zu warten. Verlangt das Master-Passwort - nicht wegen der Echtheit des
+    /// Updates, die haengt an der Signatur, sondern weil ein Update den Dienst
+    /// neu startet. Ohne Passwort waere der Knopf ein Weg, die Aufsicht auf
+    /// Zuruf und beliebig oft kurz auszusetzen.
+    /// </summary>
+    public const string UpdateCheck = "updatecheck";
+
     // Optionale Telegram-Anbindung. Die Anfragen laufen wie alles andere ueber die
     // Pipe und verlangen das Master-Passwort - geprueft wird im Dienst.
     public const string TelegramSetup = "telegramsetup";
@@ -123,6 +132,18 @@ public sealed class StatusDto
 
     /// <summary>Enthaelt der Dienst den oeffentlichen Schluessel fuer Release-Signaturen?</summary>
     public bool SignedUpdatesAvailable { get; set; }
+
+    /// <summary>Laeuft gerade eine Update-Pruefung? Das Fenster wartet darauf.</summary>
+    public bool UpdateCheckRunning { get; set; }
+
+    /// <summary>
+    /// Ergebnis der letzten Pruefung im Klartext, null solange keine gelaufen
+    /// ist. Wird angezeigt, nicht ausgewertet.
+    /// </summary>
+    public string? UpdateLastResult { get; set; }
+
+    /// <summary>Wie lange die letzte Pruefung her ist, null wenn noch keine lief.</summary>
+    public double? UpdateLastCheckSecondsAgo { get; set; }
 
     // Zustand der optionalen Telegram-Anbindung, nur fuer die Anzeige.
     public bool TelegramEnabled { get; set; }

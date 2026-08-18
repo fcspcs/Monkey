@@ -39,8 +39,11 @@ public partial class MasterWindow : ChromeWindow
     /// <summary>Steht die Anbindung, wurde der Einrichtungsteil ausdruecklich aufgerufen?</summary>
     private bool _telegramSetupPinned;
 
-    /// <summary>Aktuelle Seite des gefuehrten Telegram-Assistenten (1 bis 4).</summary>
+    /// <summary>Aktuelle Seite des gefuehrten Telegram-Assistenten (1 bis 5).</summary>
     private int _telegramSetupStep = 1;
+
+    /// <summary>Das zuletzt vorgeschlagene Namenspaar fuer die beiden Bots.</summary>
+    private BotNames? _botNames;
 
     public MasterWindow()
     {
@@ -69,6 +72,11 @@ public partial class MasterWindow : ChromeWindow
         {
             _passwordTimer.Stop();
             if (MasterPassword.Password.Length > 0) _passwordTimer.Start();
+
+            // Der Hinweis im letzten Assistentenschritt verschwindet, sobald
+            // das Passwort steht - und kommt wieder, wenn es abgelaufen ist.
+            TelegramSetupPasswordHint.Visibility =
+                Visible(_telegramSetupStep == 5 && MasterPassword.Password.Length == 0);
         };
 
         // Rueckmeldungen liegen als Overlay ueber dem Blatt und verschwinden
@@ -168,6 +176,23 @@ public partial class MasterWindow : ChromeWindow
         {
             _gimmickStage = 0;
         }
+    }
+
+    /// <summary>
+    /// Fragt das Master-Passwort ab, bevor eine Anfrage rausgeht. Es wird nach
+    /// jeder Aktion und nach zwei Minuten Ruhe geleert - ein Assistent, den man
+    /// in Ruhe durchgeht, ueberlebt das leicht. Ohne diese Bremse laeuft die
+    /// Anfrage in eine Ablehnung des Dienstes, und die raeumt anschliessend
+    /// Felder ab, die sich nicht wiederbeschaffen lassen. Hier kostet der
+    /// fehlende Schluessel nur einen Satz.
+    /// </summary>
+    private bool RequireMasterPassword()
+    {
+        if (MasterPassword.Password.Length > 0) return true;
+
+        Show(false, "Please type the master password below, then try again. Everything you have entered stays as it is.");
+        MasterPassword.Focus();
+        return false;
     }
 
     /// <summary>
@@ -733,6 +758,8 @@ public partial class MasterWindow : ChromeWindow
             return;
         }
 
+        if (!RequireMasterPassword()) return;
+
         await SendAsync(new Request
         {
             Type = RequestType.Pause,
@@ -741,20 +768,28 @@ public partial class MasterWindow : ChromeWindow
         });
     }
 
-    private async void OnResume(object sender, RoutedEventArgs e) =>
+    private async void OnResume(object sender, RoutedEventArgs e)
+    {
+        if (!RequireMasterPassword()) return;
+
         await SendAsync(new Request { Type = RequestType.Resume, Password = MasterPassword.Password });
+    }
 
     private async void OnPlus30(object sender, RoutedEventArgs e) => await AddMinutesAsync(30);
 
     private async void OnMinus30(object sender, RoutedEventArgs e) => await AddMinutesAsync(-30);
 
-    private async Task AddMinutesAsync(int minutes) =>
+    private async Task AddMinutesAsync(int minutes)
+    {
+        if (!RequireMasterPassword()) return;
+
         await SendAsync(new Request
         {
             Type = RequestType.AddTime,
             Password = MasterPassword.Password,
             Minutes = minutes,
         });
+    }
 
     private async void OnSaveConfig(object sender, RoutedEventArgs e)
     {
@@ -779,6 +814,8 @@ public partial class MasterWindow : ChromeWindow
             Show(false, "The warning needs a number of minutes greater than 0.");
             return;
         }
+
+        if (!RequireMasterPassword()) return;
 
         await SendAsync(new Request
         {
@@ -829,6 +866,8 @@ public partial class MasterWindow : ChromeWindow
             Show(false, $"The new password needs at least {PasswordHash.MinimumLength} characters.");
             return;
         }
+
+        if (!RequireMasterPassword()) return;
 
         // SendAsync leert anschliessend alle Passwortfelder und klappt den Bereich
         // wieder zu - egal ob der Wechsel geklappt hat oder nicht.
@@ -907,26 +946,24 @@ public partial class MasterWindow : ChromeWindow
     ];
 
     /// <summary>
-    /// Bot-Anzeigenamen duerfen doppelt vorkommen, Telegram-Benutzernamen nicht.
-    /// Ein kurzer Zufallsteil macht die Vorschlaege praktisch eindeutig; falls
-    /// BotFather dennoch ablehnt, erzeugt der Nutzer mit einem Klick neue.
+    /// Die Vorschlaege kommen aus dem Namensgenerator im Kern - lesbare
+    /// Wortpaare statt Hex-Zeichen. Falls BotFather einen Benutzernamen
+    /// dennoch ablehnt, holt ein Klick das naechste Paar.
     /// </summary>
     private void GenerateTelegramBotNames()
     {
-        var suffix = Convert.ToHexString(
-            System.Security.Cryptography.RandomNumberGenerator.GetBytes(4)).ToLowerInvariant();
-        var labelSuffix = suffix.ToUpperInvariant();
+        _botNames = BotNameGenerator.Create();
 
-        MonkeyBotNameBox.Text = $"Monkey balance {labelSuffix}";
-        MonkeyBotUsernameBox.Text = $"monkey_balance_{suffix}_bot";
-        FriendBotNameBox.Text = $"Monkey friend {labelSuffix}";
-        FriendBotUsernameBox.Text = $"monkey_friend_{suffix}_bot";
+        MonkeyBotNameBox.Text = _botNames.MonkeyName;
+        MonkeyBotUsernameBox.Text = _botNames.MonkeyUsername;
+        FriendBotNameBox.Text = _botNames.FriendName;
+        FriendBotUsernameBox.Text = _botNames.FriendUsername;
     }
 
     private void OnRegenerateBotNames(object sender, RoutedEventArgs e)
     {
         GenerateTelegramBotNames();
-        Show(true, "Fresh bot names generated. Use the new values for both bots.");
+        Show(true, $"New suggestions, this time “{_botNames!.Pair}”. Use them for both bots.");
     }
 
     private void OnCopyTelegramSetupValue(object sender, RoutedEventArgs e)
@@ -1083,6 +1120,12 @@ public partial class MasterWindow : ChromeWindow
                 : "not entered";
             TelegramSetupReviewText.Text =
                 $"Ready for Cloudflare account {maskedAccount}. Both Telegram bot tokens and the one-time API token are present.";
+
+            // Der letzte Schritt ist der einzige, der das Master-Passwort
+            // braucht - und der Assistent hat lange genug gedauert, dass es
+            // inzwischen abgelaufen sein kann. Also hier daran erinnern, statt
+            // den Nutzer erst am abgelehnten Klick scheitern zu lassen.
+            TelegramSetupPasswordHint.Visibility = Visible(MasterPassword.Password.Length == 0);
         }
     }
 
@@ -1153,6 +1196,8 @@ public partial class MasterWindow : ChromeWindow
             return;
         }
 
+        if (!RequireMasterPassword()) return;
+
         var connected = await SendAsync(new Request
         {
             Type = RequestType.TelegramDeploy,
@@ -1163,14 +1208,18 @@ public partial class MasterWindow : ChromeWindow
             FriendToken = FriendTokenBox.Password.Trim(),
         });
 
-        // Der Cloudflare-Schluessel ist eine einmalige Berechtigung und bleibt
-        // auch nach einem Fehler nicht im Fenster stehen.
+        // Ein Fehlschlag laesst alles stehen. Cloudflare zeigt den API-Schluessel
+        // genau einmal und BotFather den Bot-Token nur auf Nachfrage: Wer sie
+        // hier nach einem falschen Passwort oder einem Netzwerkfehler abraeumt,
+        // schickt den Nutzer durch den ganzen Assistenten zurueck. Der zweite
+        // Versuch braucht dann nur noch das Passwort.
+        if (!connected) return;
+
+        // Nach dem Erfolg dagegen hat keines dieser Geheimnisse mehr einen Grund,
+        // im Fenster zu stehen - der einmalige Cloudflare-Schluessel am wenigsten.
         CloudflareApiTokenBox.Clear();
-        // Auch Bot-Tokens bleiben nach keinem Versuch im Fenster liegen.
         MonkeyTokenBox.Clear();
         FriendTokenBox.Clear();
-
-        if (!connected) ShowTelegramSetupStep(1);
     }
 
     /// <summary>
@@ -1200,7 +1249,9 @@ public partial class MasterWindow : ChromeWindow
             return;
         }
 
-        await SendAsync(new Request
+        if (!RequireMasterPassword()) return;
+
+        var connected = await SendAsync(new Request
         {
             Type = RequestType.TelegramSetup,
             Password = MasterPassword.Password,
@@ -1210,24 +1261,31 @@ public partial class MasterWindow : ChromeWindow
             FriendToken = FriendTokenBox.Password.Trim(),
         });
 
-        // Die Tokens haben ihr Ziel erreicht (oder der Versuch ist gescheitert) -
-        // in beiden Faellen muessen sie nicht im Fenster stehen bleiben.
+        // Erst wenn die Tokens ihr Ziel erreicht haben, verschwinden sie. Ein
+        // gescheiterter Versuch soll den Nutzer nicht zurueck zu BotFather schicken.
+        if (!connected) return;
+
         MonkeyTokenBox.Clear();
         FriendTokenBox.Clear();
     }
 
-    private async void OnWorkerCheck(object sender, RoutedEventArgs e) =>
+    private async void OnWorkerCheck(object sender, RoutedEventArgs e)
+    {
+        if (!RequireMasterPassword()) return;
+
         await SendAsync(new Request
         {
             Type = RequestType.TelegramWorkerCheck,
             Password = MasterPassword.Password,
         });
+    }
 
     private async void OnWorkerUpdate(object sender, RoutedEventArgs e)
     {
         if (!TryReadCloudflareCredentials(out var accountId, out var apiToken)) return;
+        if (!RequireMasterPassword()) return;
 
-        await SendAsync(new Request
+        var updated = await SendAsync(new Request
         {
             Type = RequestType.TelegramWorkerUpdate,
             Password = MasterPassword.Password,
@@ -1235,23 +1293,21 @@ public partial class MasterWindow : ChromeWindow
             CloudflareApiToken = apiToken,
         });
 
-        CloudflareApiTokenBox.Clear();
+        if (updated) CloudflareApiTokenBox.Clear();
     }
 
     private async void OnWorkerRemove(object sender, RoutedEventArgs e)
     {
         if (!TryReadCloudflareCredentials(out var accountId, out var apiToken)) return;
+        if (!RequireMasterPassword()) return;
         if (MessageBox.Show(
                 "This permanently deletes Monkey's managed Worker, its secret bindings, all pairings, state and queued commands from Cloudflare. Continue?",
                 "Remove Cloudflare Worker",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning) != MessageBoxResult.Yes)
-        {
-            CloudflareApiTokenBox.Clear();
             return;
-        }
 
-        await SendAsync(new Request
+        var removed = await SendAsync(new Request
         {
             Type = RequestType.TelegramWorkerRemove,
             Password = MasterPassword.Password,
@@ -1259,7 +1315,7 @@ public partial class MasterWindow : ChromeWindow
             CloudflareApiToken = apiToken,
         });
 
-        CloudflareApiTokenBox.Clear();
+        if (removed) CloudflareApiTokenBox.Clear();
     }
 
     private bool TryReadCloudflareCredentials(out string accountId, out string apiToken)
@@ -1281,28 +1337,32 @@ public partial class MasterWindow : ChromeWindow
         return true;
     }
 
-    private async void OnPairMonkey(object sender, RoutedEventArgs e) =>
+    private async void OnPairMonkey(object sender, RoutedEventArgs e) => await PairAsync("monkey");
+
+    private async void OnPairFriend(object sender, RoutedEventArgs e) => await PairAsync("friend");
+
+    private async Task PairAsync(string role)
+    {
+        if (!RequireMasterPassword()) return;
+
         await SendAsync(new Request
         {
             Type = RequestType.TelegramPair,
             Password = MasterPassword.Password,
-            PairRole = "monkey",
+            PairRole = role,
         });
+    }
 
-    private async void OnPairFriend(object sender, RoutedEventArgs e) =>
-        await SendAsync(new Request
-        {
-            Type = RequestType.TelegramPair,
-            Password = MasterPassword.Password,
-            PairRole = "friend",
-        });
+    private async void OnTelegramOff(object sender, RoutedEventArgs e)
+    {
+        if (!RequireMasterPassword()) return;
 
-    private async void OnTelegramOff(object sender, RoutedEventArgs e) =>
         await SendAsync(new Request
         {
             Type = RequestType.TelegramOff,
             Password = MasterPassword.Password,
         });
+    }
 
     private static string FormatAgo(double seconds) =>
         seconds < 90 ? $"{(int)seconds} s" : $"{(int)(seconds / 60)} min";

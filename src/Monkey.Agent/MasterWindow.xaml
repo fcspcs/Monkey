@@ -790,7 +790,7 @@
                                                     Style="{StaticResource ChipButton}" Click="OnPasteTelegramSetupValue"/>
                                         </Grid>
                                         <TextBlock Style="{StaticResource Hint}" VerticalAlignment="Top" Margin="0,12,0,0"
-                                                   Text="Monkey uses this token for this deployment only, never stores it, and clears it from the window after the attempt."/>
+                                                   Text="Monkey uses this token for this deployment only and never stores it. It stays in this window until the deployment succeeds — Cloudflare shows a token just once, so a failed attempt must not cost you it."/>
                                     </StackPanel>
                                 </GroupBox>
                                 <Grid>
@@ -811,6 +811,12 @@
                                                 Padding="16,12">
                                             <TextBlock Style="{StaticResource Body}" VerticalAlignment="Top"
                                                        Text="Monkey will create one dedicated KV store and one Worker, install encrypted secrets, register both Telegram webhooks, and keep only the Worker URL plus an encrypted sync secret on this PC."/>
+                                        </Border>
+                                        <Border x:Name="TelegramSetupPasswordHint" Visibility="Collapsed"
+                                                Background="{StaticResource SurfaceSunkenBrush}" CornerRadius="{StaticResource PanelRadius}"
+                                                Padding="16,12" Margin="0,12,0,0">
+                                            <TextBlock Style="{StaticResource Body}" VerticalAlignment="Top"
+                                                       Text="The master password below is still empty — Monkey clears it after two idle minutes. Type it again before you deploy; nothing you entered in this wizard is lost either way."/>
                                         </Border>
                                         <TextBlock Style="{StaticResource Hint}" VerticalAlignment="Top" Margin="0,12,0,0"
                                                    Text="After a successful deployment, revoke this one-time API token in Cloudflare. Pairing the two chats is the next step."/>

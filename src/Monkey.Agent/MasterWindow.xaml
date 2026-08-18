@@ -306,6 +306,32 @@
                             </StackPanel>
                         </GroupBox>
 
+                        <GroupBox Header="Transparency">
+                            <StackPanel>
+                                <Grid HorizontalAlignment="Left">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Slider x:Name="OpacitySlider" Grid.Column="0"
+                                            Style="{StaticResource Slider}"
+                                            Minimum="20" Maximum="100"
+                                            SmallChange="5" LargeChange="10"
+                                            TickFrequency="5" IsSnapToTickEnabled="True"
+                                            ValueChanged="OnOpacityChanged"/>
+
+                                    <TextBlock x:Name="OpacityValue" Grid.Column="1"
+                                               Style="{StaticResource RowLabel}"
+                                               Width="52" Margin="16,0,0,0"
+                                               VerticalAlignment="Center"/>
+                                </Grid>
+
+                                <TextBlock Style="{StaticResource Hint}" VerticalAlignment="Top" Margin="0,12,0,0"
+                                           Text="How much of the desktop shows through. Pointing at the overlay always brings it back to full strength, so a faint setting stays readable when you actually look at it. It does not go below 20% — an overlay nobody can find is one nobody can click."/>
+                            </StackPanel>
+                        </GroupBox>
+
                         <GroupBox Header="Screen corner">
                             <Border Background="{StaticResource SurfaceSunkenBrush}"
                                     CornerRadius="{StaticResource PanelRadius}"

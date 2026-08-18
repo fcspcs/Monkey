@@ -31,12 +31,26 @@ public partial class App : Application
     private bool _overlayBackground = true;
     private string _overlayColor = OverlayWindow.AutoLight;
     private OverlayCorner _overlayCorner = OverlayCorner.TopRight;
+    private int _overlayOpacity = 100;
 
     /// <summary>
     /// Die Auswahl steht hier und nicht doppelt im Steuerpult: Tray-Menue und
     /// Anzeige-Seite sollen dieselben Moeglichkeiten anbieten, sonst hat man
     /// zwei Wahrheiten.
     /// </summary>
+    /// <summary>
+    /// Die Stufen im Tray-Menue. Die Anzeige-Seite hat einen Regler und kann
+    /// jeden Wert dazwischen - hier waeren fuenfzig Eintraege unbrauchbar.
+    /// </summary>
+    internal static readonly (string Label, int Value)[] OverlayOpacities =
+    [
+        ("Solid", 100),
+        ("Slightly faded", 85),
+        ("Faded", 70),
+        ("Faint", 50),
+        ("Barely there", 30),
+    ];
+
     internal static readonly (string Label, OverlayCorner Value)[] OverlayCorners =
     [
         ("Top left", OverlayCorner.TopLeft),
@@ -296,6 +310,18 @@ public partial class App : Application
         }
         menu.Items.Add(cornerMenu);
 
+        var opacityMenu = new Forms::ToolStripMenuItem("Transparency");
+        foreach (var (label, value) in OverlayOpacities)
+        {
+            var item = new Forms::ToolStripMenuItem($"{label} ({value}%)") { Tag = value };
+            item.Click += (s, _) =>
+            {
+                if (((Forms::ToolStripMenuItem)s!).Tag is int chosen) SetOverlayOpacity(chosen);
+            };
+            opacityMenu.DropDownItems.Add(item);
+        }
+        menu.Items.Add(opacityMenu);
+
         var colorMenu = new Forms::ToolStripMenuItem("Number colour");
         foreach (var (label, value) in OverlayColors)
         {
@@ -320,6 +346,7 @@ public partial class App : Application
         Roomy(menu);
         Roomy((Forms::ToolStripDropDownMenu)cornerMenu.DropDown);
         Roomy((Forms::ToolStripDropDownMenu)colorMenu.DropDown);
+        Roomy((Forms::ToolStripDropDownMenu)opacityMenu.DropDown);
 
         menu.Opening += (_, _) =>
         {
@@ -340,6 +367,12 @@ public partial class App : Application
 
             foreach (Forms::ToolStripMenuItem item in cornerMenu.DropDownItems)
                 item.Checked = item.Tag is OverlayCorner c && c == _overlayCorner;
+
+            // Ein Haken nur bei genauer Uebereinstimmung: der Regler kann Werte
+            // einstellen, die hier gar nicht stehen, und ein gerundeter Haken
+            // wuerde behaupten, es sei einer davon.
+            foreach (Forms::ToolStripMenuItem item in opacityMenu.DropDownItems)
+                item.Checked = item.Tag is int o && o == _overlayOpacity;
         };
 
         _tray = new Forms::NotifyIcon
@@ -417,13 +450,14 @@ public partial class App : Application
         _overlayBackground = AgentSettings.OverlayBackground;
         _overlayColor = AgentSettings.OverlayColor;
         _overlayCorner = AgentSettings.OverlayCorner;
+        _overlayOpacity = AgentSettings.OverlayOpacity;
 
         if (_overlay is null) return;
 
         _overlay.CountUp = AgentSettings.CountUp;
         _overlay.ShowHoverIcon = AgentSettings.HoverIcon;
         _overlay.SetCorner(_overlayCorner);
-        _overlay.ApplyPreferences(_overlayBackground, _overlayColor);
+        _overlay.ApplyPreferences(_overlayBackground, _overlayColor, _overlayOpacity);
 
         if (_overlayVisible)
         {
@@ -469,7 +503,7 @@ public partial class App : Application
     {
         _overlayBackground = !_overlayBackground;
         AgentSettings.OverlayBackground = _overlayBackground;
-        _overlay?.ApplyPreferences(_overlayBackground, _overlayColor);
+        _overlay?.ApplyPreferences(_overlayBackground, _overlayColor, _overlayOpacity);
     }
 
     private void ToggleHoverIcon()
@@ -482,7 +516,14 @@ public partial class App : Application
     {
         _overlayColor = value;
         AgentSettings.OverlayColor = value;
-        _overlay?.ApplyPreferences(_overlayBackground, value);
+        _overlay?.ApplyPreferences(_overlayBackground, value, _overlayOpacity);
+    }
+
+    private void SetOverlayOpacity(int percent)
+    {
+        _overlayOpacity = OverlayWindow.ClampOpacity(percent);
+        AgentSettings.OverlayOpacity = _overlayOpacity;
+        _overlay?.ApplyPreferences(_overlayBackground, _overlayColor, _overlayOpacity);
     }
 
     private void SetOverlayCorner(OverlayCorner corner)

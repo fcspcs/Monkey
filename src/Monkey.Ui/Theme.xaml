@@ -598,6 +598,98 @@
         </Setter>
     </Style>
 
+    <!--
+        Der Regler. Dieselbe Sprache wie der Schalter darueber: bernsteinfarben
+        fuer das Eingestellte, matt fuer den Rest, ein weisser Knopf mit Rand.
+        Nur waagerecht - senkrecht gibt es hier nichts einzustellen.
+    -->
+    <Style x:Key="SliderThumb" TargetType="Thumb">
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Thumb">
+                    <Grid Width="20" Height="20" Background="Transparent">
+                        <Ellipse x:Name="Knob" Width="18" Height="18"
+                                 Fill="#FFFFFFFF"
+                                 Stroke="{StaticResource AccentBrush}"
+                                 StrokeThickness="2"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Knob" Property="Stroke" Value="{StaticResource AccentHoverBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsDragging" Value="True">
+                            <Setter TargetName="Knob" Property="Stroke" Value="{StaticResource AccentPressedBrush}"/>
+                            <Setter TargetName="Knob" Property="Fill" Value="{StaticResource AccentSoftBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Knob" Property="Stroke" Value="{StaticResource DisabledTextBrush}"/>
+                            <Setter TargetName="Knob" Property="Fill" Value="{StaticResource DisabledBrush}"/>
+                            <Setter Property="Cursor" Value="Arrow"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Die zurueckgelegte Strecke links vom Knopf. Sonst nur eine Flaeche zum Klicken. -->
+    <Style x:Key="SliderFill" TargetType="RepeatButton">
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="IsTabStop" Value="False"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RepeatButton">
+                    <Border Background="{StaticResource AccentBrush}"
+                            CornerRadius="3" Height="6" VerticalAlignment="Center"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="SliderRest" TargetType="RepeatButton">
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="IsTabStop" Value="False"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RepeatButton">
+                    <Border Background="Transparent" Height="20" VerticalAlignment="Center"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="Slider" TargetType="Slider">
+        <Setter Property="Height" Value="20"/>
+        <Setter Property="MinWidth" Value="180"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="IsMoveToPointEnabled" Value="True"/>
+        <Setter Property="SnapsToDevicePixels" Value="True"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Slider">
+                    <Grid Background="Transparent">
+                        <Border Height="6" CornerRadius="3" VerticalAlignment="Center"
+                                Background="{StaticResource FieldBorderBrush}"/>
+
+                        <Track x:Name="PART_Track">
+                            <Track.DecreaseRepeatButton>
+                                <RepeatButton Command="Slider.DecreaseLarge" Style="{StaticResource SliderFill}"/>
+                            </Track.DecreaseRepeatButton>
+                            <Track.Thumb>
+                                <Thumb Style="{StaticResource SliderThumb}"/>
+                            </Track.Thumb>
+                            <Track.IncreaseRepeatButton>
+                                <RepeatButton Command="Slider.IncreaseLarge" Style="{StaticResource SliderRest}"/>
+                            </Track.IncreaseRepeatButton>
+                        </Track>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ==================================================== Abschnitte ====== -->
 
     <!--

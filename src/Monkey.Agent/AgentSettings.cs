@@ -57,6 +57,17 @@ internal static class AgentSettings
         set => WriteBool(nameof(HoverIcon), value);
     }
 
+    /// <summary>
+    /// Deckkraft des Overlays in Prozent. Blass genug, um nicht zu stoeren,
+    /// aber nie ganz unsichtbar - siehe <see cref="OverlayWindow.MinOpacityPercent"/>.
+    /// Wer es ganz weg haben will, nimmt <see cref="OverlayVisible"/>.
+    /// </summary>
+    public static int OverlayOpacity
+    {
+        get => OverlayWindow.ClampOpacity(ReadInt(nameof(OverlayOpacity), 100));
+        set => WriteInt(nameof(OverlayOpacity), OverlayWindow.ClampOpacity(value));
+    }
+
     /// <summary>In welcher Bildschirmecke das Overlay sitzt.</summary>
     public static OverlayCorner OverlayCorner
     {
@@ -89,6 +100,32 @@ internal static class AgentSettings
         catch
         {
             // Anzeigevorlieben sind nicht wichtig genug, um den Agent zu stoppen.
+        }
+    }
+
+    private static int ReadInt(string name, int fallback)
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(Key);
+            return key?.GetValue(name) is int value ? value : fallback;
+        }
+        catch
+        {
+            return fallback;
+        }
+    }
+
+    private static void WriteInt(string name, int value)
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.CreateSubKey(Key);
+            key?.SetValue(name, value, RegistryValueKind.DWord);
+        }
+        catch
+        {
+            // siehe oben
         }
     }
 

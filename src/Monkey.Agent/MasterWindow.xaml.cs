@@ -381,6 +381,9 @@ public partial class MasterWindow : ChromeWindow
             ShowHoverIconBox.IsChecked = AgentSettings.HoverIcon;
             CountUpBox.IsChecked = AgentSettings.CountUp;
 
+            OpacitySlider.Value = AgentSettings.OverlayOpacity;
+            ShowOpacityValue();
+
             var corner = AgentSettings.OverlayCorner;
             foreach (var button in CornerChoices.Children.OfType<RadioButton>())
                 button.IsChecked = button.Tag is OverlayCorner value && value == corner;
@@ -408,6 +411,23 @@ public partial class MasterWindow : ChromeWindow
 
         DisplayPreferencesChanged?.Invoke(this, EventArgs.Empty);
     }
+
+    /// <summary>
+    /// Waehrend des Ziehens laufend - der Regler soll sich am Overlay selbst
+    /// ablesen lassen, nicht erst beim Loslassen.
+    /// </summary>
+    private void OnOpacityChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        ShowOpacityValue();
+
+        if (_loadingDisplay) return;
+
+        AgentSettings.OverlayOpacity = (int)Math.Round(OpacitySlider.Value);
+        DisplayPreferencesChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void ShowOpacityValue() =>
+        OpacityValue.Text = $"{(int)Math.Round(OpacitySlider.Value)} %";
 
     private void OnCornerPicked(object sender, RoutedEventArgs e)
     {

@@ -51,9 +51,11 @@ you trust. Then "just five more minutes" isn't an argument with yourself at 1am.
 ## What it actually does
 
 - **Shows your remaining time** in a small overlay in the top right. Hide it,
-  recolour it, drop the background so only the number floats there. Click it to
-  open the control panel. Hover it to see the other number (time used vs. time
-  left).
+  recolour it, fade it back with the transparency slider, drop the background so
+  only the number floats there. Click it to open the control panel. Hover it to
+  see the other number (time used vs. time left) — pointing at a faded overlay
+  also brings it back to full strength, so it stays readable when you look at
+  it.
 - **Warns you in good time** — 10 minutes left by default — with a window that
   never steals focus, so it won't eat your keystrokes or tab you out of a game.
 - **Signs you out** when the balance hits zero, with a grace period to save your

@@ -31,6 +31,14 @@ public partial class OverlayWindow : Window
     /// </summary>
     private const double ShadowGutter = 14;
 
+    /// <summary>
+    /// Blasseste einstellbare Stufe. Bewusst nicht bis 0: was man nicht mehr
+    /// sieht, kann man auch nicht mehr anklicken, um es zurueckzustellen - und
+    /// eine Anzeige, die spurlos verschwindet, sieht nach Fehler aus. Wer sie
+    /// ganz weg haben will, blendet sie aus; das ist ein eigener Schalter.
+    /// </summary>
+    public const int MinOpacityPercent = 20;
+
     /// <summary>Farbwert fuer die Ampel in dunklen Toenen.</summary>
     public const string AutoDark = "auto-dark";
     /// <summary>Farbwert fuer die Ampel in hellen Toenen.</summary>
@@ -80,6 +88,9 @@ public partial class OverlayWindow : Window
 
     /// <summary>Kasten hinter der Zahl anzeigen.</summary>
     public bool ShowBackground { get; private set; } = true;
+
+    /// <summary>Deckkraft in Prozent, wenn der Zeiger nicht darauf steht.</summary>
+    public int OpacityPercent { get; private set; } = 100;
 
     /// <summary>Faehrt der Affe beim Hovern heraus?</summary>
     public bool ShowHoverIcon { get; set; } = true;
@@ -161,12 +172,42 @@ public partial class OverlayWindow : Window
     /// Anzeigevorlieben setzen. Der Farbwert ist entweder "auto" (helle Ampel),
     /// "auto-dark" (dunkle Ampel) oder ein fester Hex-Wert.
     /// </summary>
-    public void ApplyPreferences(bool showBackground, string colorValue)
+    public void ApplyPreferences(bool showBackground, string colorValue, int opacityPercent)
     {
         ShowBackground = showBackground;
         _autoDark = string.Equals(colorValue, AutoDark, StringComparison.OrdinalIgnoreCase);
         CustomColor = ParseColor(colorValue);
+        OpacityPercent = ClampOpacity(opacityPercent);
+
+        // Ohne Blende: wer am Regler zieht, will sofort sehen, was dabei
+        // herauskommt, nicht eine Zehntelsekunde spaeter.
+        ApplyOpacity(animate: false);
         Paint();
+    }
+
+    /// <summary>Haelt die Deckkraft im erlaubten Bereich.</summary>
+    public static int ClampOpacity(int percent) => Math.Clamp(percent, MinOpacityPercent, 100);
+
+    /// <summary>
+    /// Unter dem Zeiger wird immer voll aufgeblendet. Eine blasse Anzeige soll
+    /// den Desktop in Ruhe lassen - lesbar sein soll sie trotzdem, sobald man
+    /// sie ansieht. Dieselbe Blende wie beim Affen, damit beides zusammen laeuft.
+    /// </summary>
+    private void ApplyOpacity(bool animate)
+    {
+        var target = _hovering ? 1.0 : OpacityPercent / 100.0;
+
+        if (animate)
+        {
+            BeginAnimation(OpacityProperty,
+                new DoubleAnimation(target, HoverFade)
+                    { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+            return;
+        }
+
+        // Eine laufende Blende zuerst loesen - sonst haelt sie den Wert fest.
+        BeginAnimation(OpacityProperty, null);
+        Opacity = target;
     }
 
     private void CheckHover()
@@ -208,6 +249,7 @@ public partial class OverlayWindow : Window
         // Overlay Klicks an, damit es sich anklicken laesst.
         NativeMethods.SetClickThrough(_handle, clickThrough: !inside);
 
+        ApplyOpacity(animate: true);
         Paint();
     }
 

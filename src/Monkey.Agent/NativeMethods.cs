@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace Monkey.Agent;
 
@@ -71,16 +72,29 @@ internal static class NativeMethods
     private static extern bool SystemParametersInfo(uint uiAction, uint uiParam,
         ref int pvParam, uint fWinIni);
 
-    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    private static extern IntPtr OpenDesktop(string lpszDesktop, uint dwFlags,
+    /// <summary>Der Desktop, auf dem die Eingabe gerade liegt - der sichtbare.</summary>
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr OpenInputDesktop(uint dwFlags,
         [MarshalAs(UnmanagedType.Bool)] bool fInherit, uint dwDesiredAccess);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CloseDesktop(IntPtr hDesktop);
 
+    /// <summary>
+    /// nLength zaehlt Bytes, nicht Zeichen - bei einem UTF-16-Puffer also das
+    /// Doppelte seiner Zeichenzahl.
+    /// </summary>
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetUserObjectInformation(IntPtr hObj, int nIndex,
+        [Out] StringBuilder pvInfo, int nLength, out int lpnLengthNeeded);
+
     private const uint DESKTOP_READOBJECTS = 0x0001;
-    private const int ERROR_ACCESS_DENIED = 5;
+    private const int UOI_NAME = 2;
+
+    /// <summary>Name des Desktops, auf dem Windows den Bildschirmschoner laufen laesst.</summary>
+    private const string ScreensaverDesktop = "Screen-saver";
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
@@ -91,11 +105,14 @@ internal static class NativeMethods
     /// <summary>
     /// Laeuft gerade ein Bildschirmschoner? Drei Blickwinkel, weil keiner allein
     /// alle Faelle trifft: die offizielle Abfrage; der Desktop "Screen-saver",
-    /// auf dem Windows den Schoner laufen laesst (existiert er - auch wenn der
-    /// Zugriff verweigert wird -, laeuft ein Schoner); und zuletzt das
+    /// auf dem Windows den Schoner laufen laesst; und zuletzt das
     /// Vordergrundfenster. Letzteres faengt den von Hand gestarteten Schoner
     /// (Verknuepfung oder Hotkey auf eine .scr-Datei) - fuer Windows ist der nur
     /// ein normales Vollbildprogramm, das System-Flag bleibt dann aus.
+    ///
+    /// Jeder Blickwinkel muss den laufenden Schoner belegen, nicht bloss seine
+    /// Spuren: Ein falsches Ja haelt die Uhr an, und eine angehaltene Uhr ist
+    /// eine ausgeschaltete Aufsicht.
     /// </summary>
     public static bool IsScreensaverRunning()
     {
@@ -103,16 +120,53 @@ internal static class NativeMethods
         if (SystemParametersInfo(SPI_GETSCREENSAVERRUNNING, 0, ref running, 0) && running != 0)
             return true;
 
-        var desktop = OpenDesktop("Screen-saver", 0, false, DESKTOP_READOBJECTS);
-        if (desktop != IntPtr.Zero)
+        return InputDesktopIsScreensaver() || ForegroundWindowIsScreensaver();
+    }
+
+    /// <summary>
+    /// Liegt die Eingabe gerade auf dem Bildschirmschoner-Desktop?
+    ///
+    /// Hier stand frueher nur die Frage, ob es den Desktop "Screen-saver"
+    /// ueberhaupt gibt. Das war falsch: Windows legt ihn beim ersten Schonerlauf
+    /// an und raeumt ihn nicht verlaesslich wieder weg. Ein einziger Schonerlauf
+    /// hat die Uhr damit fuer den Rest der Anmeldung angehalten - der Dienst
+    /// zog keine Sekunde mehr ab, und die Aufsicht war still ausser Kraft.
+    /// Es zaehlt nicht, ob der Desktop existiert, sondern ob er vorn ist.
+    /// </summary>
+    private static bool InputDesktopIsScreensaver()
+    {
+        var desktop = OpenInputDesktop(0, false, DESKTOP_READOBJECTS);
+
+        // Schlaegt fehl, wenn die Eingabe auf einem Desktop liegt, auf den wir
+        // kein Recht haben: Sperrbildschirm oder Rechteabfrage. Beides ist kein
+        // Schoner - das Sperren haelt die Uhr ohnehin schon an, und vor einer
+        // Rechteabfrage sitzt jemand. Im Zweifel also weiterzaehlen.
+        if (desktop == IntPtr.Zero) return false;
+
+        try
+        {
+            return string.Equals(DesktopName(desktop), ScreensaverDesktop,
+                StringComparison.OrdinalIgnoreCase);
+        }
+        finally
         {
             CloseDesktop(desktop);
-            return true;
         }
-        if (Marshal.GetLastWin32Error() == ERROR_ACCESS_DENIED)
-            return true;
+    }
 
-        return ForegroundWindowIsScreensaver();
+    /// <summary>
+    /// Name eines Desktops, null wenn er sich nicht lesen laesst. Der Puffer ist
+    /// fest: Desktopnamen sind kurz, und was laenger als 255 Zeichen ist, ist
+    /// ganz sicher nicht der gesuchte.
+    /// </summary>
+    private static string? DesktopName(IntPtr desktop)
+    {
+        const int maxChars = 256;
+
+        var buffer = new StringBuilder(maxChars);
+        return GetUserObjectInformation(desktop, UOI_NAME, buffer, maxChars * sizeof(char), out _)
+            ? buffer.ToString()
+            : null;
     }
 
     private static bool ForegroundWindowIsScreensaver()

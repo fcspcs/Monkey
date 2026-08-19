@@ -114,6 +114,43 @@ public sealed class GuardEngineTests
     }
 
     [Fact]
+    public void Tick_PauseCleared_ConsumesAgain()
+    {
+        // Eine Pause darf nicht kleben bleiben. Das ist die teuerste Sorte
+        // Fehler, die dieses Werkzeug haben kann: Eine Uhr, die faelschlich
+        // steht, zeigt nicht bloss falsch an - sie meldet auch nie mehr jemanden
+        // ab, die Aufsicht ist damit still ausser Kraft. Genau so hat eine zu
+        // grosszuegige Schonererkennung im Agent einmal einen ganzen Tag
+        // verschluckt.
+        var engine = TestEnv.Engine(s => s.BalanceSeconds = 300, TestEnv.User());
+
+        engine.Handle(RequestType.Heartbeat, mutate: r =>
+        {
+            r.SessionId = 7;
+            r.ScreensaverRunning = true;
+            r.DisplayOff = true;
+        });
+
+        Thread.Sleep(100);
+        engine.Tick(Tick);
+        Assert.Equal(300, engine.Status().BalanceSeconds, 3);
+
+        engine.Handle(RequestType.Heartbeat, mutate: r =>
+        {
+            r.SessionId = 7;
+            r.ScreensaverRunning = false;
+            r.DisplayOff = false;
+        });
+
+        Thread.Sleep(150);
+        engine.Tick(Tick);
+
+        var balance = engine.Status(7).BalanceSeconds;
+        Assert.InRange(balance, 290, 299.99);
+        Assert.True(engine.Status(7).SessionElapsedSeconds > 0);
+    }
+
+    [Fact]
     public void Tick_LogonScreenOnly_DoesNotConsume()
     {
         // Der Anmeldebildschirm ist eine aktive Sitzung ohne Benutzer - er darf

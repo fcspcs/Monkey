@@ -9,7 +9,7 @@
     Wert gilt fuer alles, was daneben gebaut wird.
   -->
   <PropertyGroup>
-    <Version>1.3.9</Version>
+    <Version>1.3.10</Version>
     <Product>Monkey</Product>
   </PropertyGroup>
 

@@ -15,8 +15,9 @@
  * secret (Bearer). Telegram authenticates its webhooks with per-bot secret
  * tokens this worker registered. Chats must pair with a one-time code before
  * any command or status is served. The master password never leaves the PC,
- * and the worker can only do what the PC-side engine allows: add time. It
- * cannot change settings, passwords, or unlock anything.
+ * and the worker can only do what the PC-side engine allows: add time or set
+ * the rest of the day free. It cannot change settings, passwords, or unlock
+ * the protection itself.
  */
 
 const TOKEN_RE = /^\d{5,12}:[A-Za-z0-9_-]{30,64}$/;
@@ -234,8 +235,8 @@ async function telegramUpdate(request, env, role) {
     return ok();
   }
 
-  if (role === 'friend' && command === '/add') {
-    await handleFriendCommand(env, state, arg, chatId, reply);
+  if (role === 'friend' && (command === '/add' || command === '/banana')) {
+    await handleFriendCommand(env, state, command, arg, chatId, reply);
     return ok();
   }
 
@@ -269,27 +270,33 @@ async function handlePair(env, config, role, chatId, arg, reply) {
 
   await reply(
     role === 'friend'
-      ? 'Paired ✅  You can now use /status and /add MINUTES.'
+      ? 'Paired ✅  You can now use /status, /add MINUTES and /banana.'
       : 'Paired ✅  Send /status any time to check the balance.',
   );
 }
 
-async function handleFriendCommand(env, state, arg, chatId, reply) {
+async function handleFriendCommand(env, state, command, arg, chatId, reply) {
   if (!state) {
     await reply("The PC hasn't reported in yet — try again after Monkey has been running once.");
     return;
   }
 
-  const minutes = parseInt(arg, 10);
-  if (!Number.isInteger(minutes) || minutes < 1) {
-    await reply('Usage: /add MINUTES — for example /add 30');
-    return;
+  let queued;
+  if (command === '/banana') {
+    // Wie viel das ist, rechnet der PC aus - bis Mitternacht seiner Uhr.
+    queued = { type: 'banana', minutes: 0, action: '🍌 Setting the rest of the day free' };
+  } else {
+    const minutes = parseInt(arg, 10);
+    if (!Number.isInteger(minutes) || minutes < 1) {
+      await reply('Usage: /add MINUTES — for example /add 30');
+      return;
+    }
+    if (minutes > MAX_ADD_MINUTES) {
+      await reply(`That is more than ${MAX_ADD_MINUTES} minutes — surely a typo.`);
+      return;
+    }
+    queued = { type: 'add', minutes, action: `Adding ${minutes} min` };
   }
-  if (minutes > MAX_ADD_MINUTES) {
-    await reply(`That is more than ${MAX_ADD_MINUTES} minutes — surely a typo.`);
-    return;
-  }
-  const queued = { type: 'add', minutes, action: `Adding ${minutes} min` };
 
   const list = await env.KV.list({ prefix: 'cmd:' });
   if (list.keys.length >= MAX_QUEUE) {
@@ -375,13 +382,13 @@ function statusText(state, role) {
   if (grant > 0 && p.balance < cap)
     lines.push(`Tomorrow: ${fmt(Math.min(p.balance + grant, cap))}.`);
 
-  if (role === 'friend') lines.push('Commands: /status, /add MIN');
+  if (role === 'friend') lines.push('Commands: /status, /add MIN, /banana');
   return lines.join('\n');
 }
 
 function helpText(role) {
   return role === 'friend'
-    ? 'Commands: /status — balance and monkey stage, /add MIN — top up.'
+    ? 'Commands: /status — balance and monkey stage, /add MIN — top up, /banana — set the rest of the day free.'
     : 'Command: /status — balance, saved time and monkey stage.';
 }
 

@@ -789,7 +789,8 @@ internal sealed class GuardEngine
 
     /// <summary>
     /// Fernbefehle des Freundes anwenden. Bewusst enger als die Pipe: nur
-    /// nachlegen - keine Einstellungen, kein Passwort, kein Teardown. Jeder Befehl wird genau einmal ausgefuehrt, auch wenn der
+    /// nachlegen und den Resttag freigeben - keine Einstellungen, kein
+    /// Passwort, kein Teardown. Jeder Befehl wird genau einmal ausgefuehrt, auch wenn der
     /// Worker ihn nach einer verlorenen Quittung erneut zustellt.
     /// </summary>
     public List<RemoteResult> ApplyRemoteCommands(IReadOnlyList<RemoteCommand> commands)
@@ -854,6 +855,30 @@ internal sealed class GuardEngine
 
                 Log.Write($"Telegram: {minutes} min added remotely, balance now {Format(_state.BalanceSeconds)}.");
                 return (true, $"Added {minutes} min. The balance is now {Format(_state.BalanceSeconds)}.");
+            }
+
+            case "banana":
+            {
+                // Der Bananen-Befehl: der Rest des Tages ist frei. Das Guthaben
+                // wird bis Mitternacht der PC-Uhr aufgefuellt - nie gekuerzt,
+                // wer schon mehr hat, behaelt es.
+                var now = _clock.Now.LocalDateTime;
+                var untilMidnight = (now.Date.AddDays(1) - now).TotalSeconds;
+
+                if (_state.BalanceSeconds >= untilMidnight)
+                    return (true, $"The rest of today was already free - balance {Format(_state.BalanceSeconds)}. 🍌");
+
+                Today().AddedSeconds += untilMidnight - _state.BalanceSeconds;
+                _state.BalanceSeconds = untilMidnight;
+
+                // Wie beim Nachlegen: dazugegeben ist nicht gespart.
+                _state.EarnedSeconds = 0;
+                ClampEarned();
+                ResetGrace();
+                _previousRemainingMinutes = double.MaxValue;
+
+                Log.Write($"Telegram: banana - rest of the day unlocked, balance now {Format(_state.BalanceSeconds)}.");
+                return (true, $"Banana! The rest of today is free - {Format(_state.BalanceSeconds)} until midnight. 🍌");
             }
 
             // Ein noch nicht aktualisierter Worker kann diese Befehle weiterhin

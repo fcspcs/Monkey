@@ -140,8 +140,9 @@ count.
 Check the balance and top up from your phone — **even while the PC is off**:
 
 - **Monkey's bot** answers `/status`: balance, saved time, monkey stage.
-- **The friend's bot** can also add time, as much as it likes — remote control
-  without the master password ever leaving the PC.
+- **The friend's bot** can also add time, as much as it likes, and `/banana`
+  sets the rest of the day free — remote control without the master password
+  ever leaving the PC.
 
 It runs through a tiny relay in your **own free Cloudflare account** — this
 project hosts nothing. Open the control panel's **Telegram** tab: its assistant

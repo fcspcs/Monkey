@@ -550,6 +550,19 @@ describe('friend commands', () => {
     ]);
   });
 
+  test('/banana queues the whole-day unlock without needing an argument', async () => {
+    const env = await friendReady();
+
+    await webhook(env, 'friend', update(222, '/banana'));
+    assert.match(lastReply(), /Setting the rest of the day free/);
+
+    const commands = await queuedCommands(env);
+    assert.equal(commands.length, 1);
+    assert.equal(commands[0].type, 'banana');
+    assert.equal(commands[0].minutes, 0);
+    assert.equal(commands[0].chatId, 222);
+  });
+
   test('/pause and /resume are gone - the friend only gets help', async () => {
     const env = await friendReady();
 
@@ -578,8 +591,11 @@ describe('friend commands', () => {
     await reportState(env);
 
     await webhook(env, 'monkey', update(111, '/add 30'));
-
     assert.match(lastReply(), /Command: \/status/);
+
+    await webhook(env, 'monkey', update(111, '/banana'));
+    assert.match(lastReply(), /Command: \/status/);
+
     assert.equal((await queuedCommands(env)).length, 0);
   });
 });

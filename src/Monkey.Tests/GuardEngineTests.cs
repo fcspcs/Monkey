@@ -440,6 +440,42 @@ public sealed class GuardEngineTests
     }
 
     [Fact]
+    public void RemoteBanana_UnlocksTheRestOfTheDay()
+    {
+        var engine = TestEnv.Engine(s =>
+        {
+            s.BalanceSeconds = 60;
+            s.EarnedSeconds = 60;
+        });
+
+        var results = engine.ApplyRemoteCommands([new RemoteCommand("b1", "banana", 0)]);
+
+        Assert.True(Assert.Single(results).Ok);
+        Assert.Contains("Banana", results[0].Message);
+
+        // Bis Mitternacht der lokalen Uhr, mit etwas Toleranz fuer die Laufzeit
+        // des Tests selbst.
+        var untilMidnight = (DateTime.Today.AddDays(1) - DateTime.Now).TotalSeconds;
+        Assert.InRange(engine.Status().BalanceSeconds, untilMidnight - 5, untilMidnight + 5);
+
+        // Geschenkt ist nicht gespart - der Affe faengt von vorn an.
+        Assert.Equal(1, engine.Status().EvolutionStage);
+    }
+
+    [Fact]
+    public void RemoteBanana_NeverReduces()
+    {
+        // Wer schon mehr hat als der Resttag lang ist, behaelt es.
+        var engine = TestEnv.Engine(s => s.BalanceSeconds = 200_000);
+
+        var results = engine.ApplyRemoteCommands([new RemoteCommand("b1", "banana", 0)]);
+
+        Assert.True(Assert.Single(results).Ok);
+        Assert.Contains("already free", results[0].Message);
+        Assert.Equal(200_000, engine.Status().BalanceSeconds, 1);
+    }
+
+    [Fact]
     public void RemotePauseAndResume_AreRefusedWithAnExplanation()
     {
         // Ein noch nicht aktualisierter Worker kann sie weiterhin zustellen.

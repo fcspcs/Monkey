@@ -75,6 +75,35 @@ public partial class App : Application
         ("Purple", "#B57AFF"),
     ];
 
+    /// <summary>So lange wartet der Nachfolger darauf, dass der alte Agent geht.</summary>
+    private static readonly TimeSpan HandoverWait = TimeSpan.FromSeconds(15);
+
+    /// <summary>
+    /// Einzelinstanz-Mutex, beim Abloesen eines alten Agents mit Nachfassen.
+    ///
+    /// Ein Prozess gibt seinen Mutex erst frei, wenn er wirklich zu Ende ist -
+    /// das kann nach dem Warten auf den Beendigungscode noch einen Moment
+    /// dauern. Wer hier beim ersten Versuch aufgibt, laesst den Rechner ganz
+    /// ohne Anzeige zurueck: Der alte Agent geht, der neue kommt nie hoch.
+    /// Nur beim Abloesen wird nachgefasst - wer den Agent von Hand ein zweites
+    /// Mal startet, soll wie bisher sofort wieder verschwinden.
+    /// </summary>
+    private static Mutex? TakeSingleInstance(string? pipeOverride, bool replacing)
+    {
+        var name = Paths.MutexName + (pipeOverride ?? string.Empty);
+        var deadline = DateTime.UtcNow + (replacing ? HandoverWait : TimeSpan.Zero);
+
+        while (true)
+        {
+            var mutex = new Mutex(true, name, out var isFirst);
+            if (isFirst) return mutex;
+
+            mutex.Dispose();
+            if (DateTime.UtcNow >= deadline) return null;
+            Thread.Sleep(250);
+        }
+    }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -85,14 +114,16 @@ public partial class App : Application
 
         // Nach einem Selbst-Update: erst warten, bis der alte Agent weg ist,
         // sonst scheitert diese Instanz gleich am Einzelinstanz-Mutex.
+        var replacing = false;
         if (ArgumentValue(e.Args, "--restart") is { } oldPid && int.TryParse(oldPid, out var pid))
         {
-            try { Process.GetProcessById(pid).WaitForExit(15000); }
+            replacing = true;
+            try { Process.GetProcessById(pid).WaitForExit((int)HandoverWait.TotalMilliseconds); }
             catch { /* schon weg */ }
         }
 
-        _singleInstance = new Mutex(true, Paths.MutexName + (pipeOverride ?? string.Empty), out var isFirst);
-        if (!isFirst)
+        _singleInstance = TakeSingleInstance(pipeOverride, replacing);
+        if (_singleInstance is null)
         {
             Shutdown();
             return;
@@ -135,7 +166,26 @@ public partial class App : Application
         RestartIfOutdated();
     }
 
-    private bool _restartQueued;
+    private DateTimeOffset? _restartStartedAt;
+
+    /// <summary>
+    /// So lange gilt ein angestossener Neustart als unterwegs. Danach darf es
+    /// wieder jemand versuchen.
+    ///
+    /// Frueher stand hier ein Schalter, der nur einmal umgelegt wurde. Kam die
+    /// Uebergabe nicht durch, blieb der Agent bis zum naechsten Anmelden auf
+    /// dem alten Stand stehen - und versuchte es kein zweites Mal. Er zeigt
+    /// dann veraltete Zahlen, und was am Agent selbst verbessert wurde,
+    /// erreicht den Rechner ueberhaupt nicht.
+    /// </summary>
+    private static readonly TimeSpan RestartRetryAfter = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// Frist fuer den geordneten Abgang, bevor hart beendet wird. Reichlich
+    /// bemessen und trotzdem deutlich kuerzer als <see cref="HandoverWait"/>,
+    /// damit der Nachfolger noch wartet, wenn es so weit ist.
+    /// </summary>
+    private static readonly TimeSpan ShutdownGrace = TimeSpan.FromSeconds(5);
 
     /// <summary>
     /// Nach einem Auto-Update laeuft dieser Prozess noch als alte Version von
@@ -146,7 +196,10 @@ public partial class App : Application
     /// </summary>
     private void RestartIfOutdated()
     {
-        if (_restartQueued || _status?.ServiceVersion is not { } serviceVersion) return;
+        if (_status?.ServiceVersion is not { } serviceVersion) return;
+
+        if (_restartStartedAt is { } startedAt
+            && DateTimeOffset.UtcNow - startedAt < RestartRetryAfter) return;
 
         var mine = typeof(App).Assembly.GetName().Version ?? new Version(0, 0, 0);
         var mineText = $"{Math.Max(mine.Major, 0)}.{Math.Max(mine.Minor, 0)}.{Math.Max(mine.Build, 0)}";
@@ -173,14 +226,49 @@ public partial class App : Application
                 UseShellExecute = true,
                 ArgumentList = { "--restart", Environment.ProcessId.ToString() },
             });
-            _restartQueued = true;
-            Shutdown();
+            _restartStartedAt = DateTimeOffset.UtcNow;
+            LeaveForReplacement();
         }
         catch
         {
             // Dann eben beim naechsten Anmelden - der Autostart nimmt ohnehin
             // die neue Datei.
         }
+    }
+
+    /// <summary>
+    /// Platz machen fuer den Nachfolger.
+    ///
+    /// Shutdown() ist die geordnete Bitte, und die laeuft ueber den Dispatcher.
+    /// Bleibt sie liegen, behaelt dieser Prozess den Einzelinstanz-Mutex, der
+    /// Nachfolger kommt nicht hoch, und der Agent bleibt auf dem alten Stand.
+    /// Darum ein hartes Ende als Rueckfallebene - auf einem eigenen Faden, denn
+    /// wenn Shutdown() haengt, haengt in aller Regel genau der Dispatcher, an
+    /// dem ein DispatcherTimer ebenfalls haengen wuerde.
+    /// </summary>
+    private void LeaveForReplacement()
+    {
+        // Wir gehen ohnehin: das Tray-Symbol gleich hier abraeumen. Bei einem
+        // harten Ende laeuft OnExit nicht mehr, und dann bliebe ein totes
+        // Symbol stehen, bis jemand mit der Maus darueberfaehrt.
+        if (_tray is not null)
+        {
+            _tray.Visible = false;
+            _tray.Dispose();
+            _tray = null;
+        }
+
+        Shutdown();
+
+        new Thread(() =>
+        {
+            Thread.Sleep(ShutdownGrace);
+            Environment.Exit(0);
+        })
+        {
+            IsBackground = true,
+            Name = "monkey-restart-bail",
+        }.Start();
     }
 
     /// <summary>

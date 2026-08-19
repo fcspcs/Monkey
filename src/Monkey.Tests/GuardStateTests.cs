@@ -50,6 +50,7 @@ public sealed class GuardStateTests
         state.Telegram.Enabled = true;
         state.Telegram.WorkerUrl = "https://x.workers.dev";
         state.Telegram.SyncSecretProtected = "chiffrat";
+        state.Telegram.ApiTokenProtected = "token-chiffrat";
         state.Telegram.Managed = true;
         state.Telegram.CloudflareAccountId = new string('a', 32);
         state.Telegram.ScriptName = "monkey-telegram-abc";
@@ -66,6 +67,7 @@ public sealed class GuardStateTests
         Assert.Equal(state.ClockTamperEvents, restored.ClockTamperEvents);
         Assert.Equal(state.EmptyGraceRuns, restored.EmptyGraceRuns);
         Assert.Equal(state.AppliedRemoteCommandIds, restored.AppliedRemoteCommandIds);
+        Assert.Equal(state.Telegram.ApiTokenProtected, restored.Telegram.ApiTokenProtected);
         Assert.Equal(45, restored.Config.DailyGrantMinutes);
         Assert.Equal(300, restored.Config.CapMinutes);
         Assert.True(restored.Telegram.Enabled);

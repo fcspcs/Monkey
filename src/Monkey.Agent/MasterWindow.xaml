@@ -774,7 +774,7 @@
                                 <!-- Step 4: Der Link ist eine offizielle Cloudflare-
                                      Template-URL und fuellt die Rechte bereits aus. -->
                                 <StackPanel x:Name="TelegramTokenStep" Visibility="Collapsed">
-                                <GroupBox Header="Create a one-time API token">
+                                <GroupBox Header="Create an API token">
                                     <StackPanel>
                                         <TextBlock Style="{StaticResource Body}" VerticalAlignment="Top" Margin="0,0,0,14"
                                                    Text="The button opens Cloudflare's token form with Monkey's two required permissions already filled in. Do not use the Global API Key."/>
@@ -804,7 +804,7 @@
                                                     Style="{StaticResource ChipButton}" Click="OnPasteTelegramSetupValue"/>
                                         </Grid>
                                         <TextBlock Style="{StaticResource Hint}" VerticalAlignment="Top" Margin="0,12,0,0"
-                                                   Text="Monkey uses this token for this deployment only and never stores it. It stays in this window until the deployment succeeds — Cloudflare shows a token just once, so a failed attempt must not cost you it."/>
+                                                   Text="After a successful deployment Monkey keeps this token encrypted in its protected data folder — only the service account can read it — so Worker updates install themselves from then on. Until then it stays in this window: Cloudflare shows a token just once, and a failed attempt must not cost you it."/>
                                     </StackPanel>
                                 </GroupBox>
                                 <Grid>

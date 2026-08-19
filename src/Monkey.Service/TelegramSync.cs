@@ -57,6 +57,24 @@ internal sealed class TelegramSync(GuardEngine engine) : BackgroundService
 
     private int _failures;
 
+    /// <summary>Wann der Worker das naechste Mal auf eine alte Fassung geprueft wird.</summary>
+    private DateTimeOffset _nextWorkerVersionCheck = DateTimeOffset.MinValue;
+
+    /// <summary>
+    /// Hoechste Fassung, deren Selbst-Update schon einmal fehlschlug. Der Takt
+    /// versucht sie nicht endlos weiter - ein Dienstneustart schon.
+    /// </summary>
+    private int _workerUpdateFailedFor;
+
+    private static readonly TimeSpan WorkerVersionCheckInterval = TimeSpan.FromHours(6);
+
+    /// <summary>
+    /// Erst kurz nach Dienststart pruefen, nicht sofort: direkt nach einem
+    /// Monkey-Update ist der Sync noch gar nicht gelaufen, und der Worker soll
+    /// zuerst den frischen Stand bekommen.
+    /// </summary>
+    private static readonly TimeSpan FirstWorkerVersionCheckDelay = TimeSpan.FromMinutes(2);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try
@@ -68,6 +86,9 @@ internal sealed class TelegramSync(GuardEngine engine) : BackgroundService
                 catch (OperationCanceledException) { break; }
 
                 try { await SyncOnceAsync(stoppingToken); }
+                catch (OperationCanceledException) { break; }
+
+                try { await MaybeUpdateWorkerAsync(stoppingToken); }
                 catch (OperationCanceledException) { break; }
             }
         }
@@ -228,6 +249,7 @@ internal sealed class TelegramSync(GuardEngine engine) : BackgroundService
             engine.SetTelegram(
                 true, workerUrl, Dpapi.Protect(secret), true,
                 accountId, scriptName, namespaceId, CurrentWorkerVersion);
+            engine.StoreTelegramApiToken(Dpapi.Protect(apiToken));
         }
         catch
         {
@@ -243,8 +265,9 @@ internal sealed class TelegramSync(GuardEngine engine) : BackgroundService
         }
 
         return Response.Success(
-            $"Cloudflare Worker v{CurrentWorkerVersion} deployed and Telegram connected. The API token was not stored; bot and webhook tokens are encrypted Cloudflare secrets.\n" +
-            "You can revoke the one-time Cloudflare API token now. Next: create one pairing code for each bot below.");
+            $"Cloudflare Worker v{CurrentWorkerVersion} deployed and Telegram connected. Bot and webhook tokens are encrypted Cloudflare secrets.\n" +
+            "The API token stays on this PC, encrypted and readable only by the service, so future Worker updates install themselves. " +
+            "Next: create one pairing code for each bot below.");
     }
 
     /// <summary>
@@ -324,6 +347,61 @@ internal sealed class TelegramSync(GuardEngine engine) : BackgroundService
         using var _ = await PostAsync($"{url}/provision", secret, body, CancellationToken.None);
     }
 
+    /// <summary>
+    /// Selbsttaetiges Worker-Update, ohne Zutun und ohne Passwort: es kann nur
+    /// die Fassung installieren, die in diesem Dienst eingebettet ist - dieselbe
+    /// Schranke, die auch der Knopf hat. Laeuft nur, wenn bei Einrichtung oder
+    /// letztem Hand-Update ein Cloudflare-Token hinterlegt wurde.
+    /// </summary>
+    private async Task MaybeUpdateWorkerAsync(CancellationToken token)
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (_nextWorkerVersionCheck == DateTimeOffset.MinValue)
+        {
+            _nextWorkerVersionCheck = now + FirstWorkerVersionCheckDelay;
+            return;
+        }
+        if (now < _nextWorkerVersionCheck) return;
+        _nextWorkerVersionCheck = now + WorkerVersionCheckInterval;
+
+        var settings = engine.TelegramConfig();
+        if (!settings.Enabled || !settings.Managed ||
+            settings.WorkerUrl is null || settings.SyncSecretProtected is null ||
+            settings.ApiTokenProtected is null || settings.CloudflareAccountId is null)
+            return;
+
+        // Schon auf Stand? Die /info-Abfrage ist billig und entscheidet alles Weitere.
+        if (settings.WorkerVersion >= CurrentWorkerVersion) return;
+        if (_workerUpdateFailedFor >= CurrentWorkerVersion) return;
+
+        try
+        {
+            var apiToken = Dpapi.Unprotect(settings.ApiTokenProtected);
+
+            Log.Write($"Worker v{settings.WorkerVersion} is older than the embedded v{CurrentWorkerVersion} - updating in the background.");
+            var result = await UpdateWorkerCoreAsync(settings, settings.CloudflareAccountId, apiToken);
+
+            if (result.Ok)
+            {
+                Log.Write($"Background worker update done: {result.Message}");
+            }
+            else
+            {
+                _workerUpdateFailedFor = CurrentWorkerVersion;
+                Log.Write($"Background worker update failed: {result.Message}");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _workerUpdateFailedFor = CurrentWorkerVersion;
+            Log.Write($"Background worker update failed: {Shorten(ex.Message, 200)}");
+        }
+    }
+
     private async Task<Response> CheckWorkerAsync(Request request)
     {
         var auth = engine.Authorize(request.Password);
@@ -338,7 +416,10 @@ internal sealed class TelegramSync(GuardEngine engine) : BackgroundService
         var maintenance = version switch
         {
             CurrentWorkerVersion => "The Worker is up to date.",
-            < CurrentWorkerVersion => "An update is available. Use the one-time Cloudflare token below; chats, state and queued commands will be preserved.",
+            < CurrentWorkerVersion when settings.ApiTokenProtected is not null =>
+                "An update is available and installs itself within a few hours. The button below does the same thing right now.",
+            < CurrentWorkerVersion =>
+                "An update is available. Paste a Cloudflare token below once - Monkey keeps it encrypted, and every later update installs itself.",
             _ => "The Worker is newer than this Monkey installation. Update Monkey before changing it.",
         };
 
@@ -354,25 +435,49 @@ internal sealed class TelegramSync(GuardEngine engine) : BackgroundService
         if (!settings.Enabled || settings.WorkerUrl is null || settings.SyncSecretProtected is null)
             return Response.Fail("Connect Telegram first.");
 
-        var accountId = ValidateAccountId(request.CloudflareAccountId);
-        var apiToken = ValidateApiToken(request.CloudflareApiToken);
+        // Ohne eingegebenes Token tut es das gespeicherte - so laesst sich der
+        // Knopf auch druecken, wenn die Selbstaktualisierung nur noch nicht
+        // dran war.
+        string apiToken;
+        if (!string.IsNullOrWhiteSpace(request.CloudflareApiToken))
+            apiToken = ValidateApiToken(request.CloudflareApiToken);
+        else if (settings.ApiTokenProtected is { } storedToken)
+            apiToken = Dpapi.Unprotect(storedToken);
+        else
+            return Response.Fail(
+                "No Cloudflare token is stored yet. Paste one once - Monkey keeps it encrypted, and every later update installs itself.");
+
+        var accountId = string.IsNullOrWhiteSpace(request.CloudflareAccountId) && settings.CloudflareAccountId is { } known
+            ? known
+            : ValidateAccountId(request.CloudflareAccountId);
         if (settings.CloudflareAccountId is { } storedAccount &&
             !string.Equals(storedAccount, accountId, StringComparison.OrdinalIgnoreCase))
             return Response.Fail("This Account ID does not match the account used to deploy the Worker.");
 
+        var result = await UpdateWorkerCoreAsync(settings, accountId, apiToken);
+        if (result.Ok) engine.StoreTelegramApiToken(Dpapi.Protect(apiToken));
+        return result;
+    }
+
+    /// <summary>
+    /// Der eigentliche Update-Weg, geteilt zwischen Knopf und Hintergrund. Wer
+    /// hierher kommt, ist schon autorisiert und hat Konto und Token in der Hand.
+    /// </summary>
+    private async Task<Response> UpdateWorkerCoreAsync(TelegramConfigView settings, string accountId, string apiToken)
+    {
         var (expectedScript, namespaceTitle) = ManagedNames();
         var scriptName = settings.ScriptName ?? expectedScript;
-        if (!WorkerUrlMatchesScript(settings.WorkerUrl, scriptName) ||
+        if (!WorkerUrlMatchesScript(settings.WorkerUrl!, scriptName) ||
             (!settings.Managed && !string.Equals(scriptName, expectedScript, StringComparison.Ordinal)))
             return Response.Fail(
                 "Automatic updates are only available for Workers deployed by Monkey. Update this custom Worker in Cloudflare.");
 
-        var secret = Dpapi.Unprotect(settings.SyncSecretProtected);
-        var version = await GetWorkerVersionAsync(settings.WorkerUrl, secret);
+        var secret = Dpapi.Unprotect(settings.SyncSecretProtected!);
+        var version = await GetWorkerVersionAsync(settings.WorkerUrl!, secret);
         if (version > CurrentWorkerVersion)
             return Response.Fail("The Worker is newer than this Monkey installation. Update Monkey first.");
         if (version == CurrentWorkerVersion)
-            return Response.Success($"Worker v{version} is already up to date. The Cloudflare token was not stored.");
+            return Response.Success($"Worker v{version} is already up to date.");
 
         var namespaceId = settings.KvNamespaceId ??
                           (await EnsureKvNamespaceAsync(accountId, apiToken, namespaceTitle)).Id;
@@ -384,18 +489,18 @@ internal sealed class TelegramSync(GuardEngine engine) : BackgroundService
             // anschliessend durch /provision aus KV entfernt.
             var legacy = await ReadLegacyWorkerSecretsAsync(accountId, apiToken, namespaceId, secret);
             await UploadWorkerAsync(accountId, apiToken, scriptName, namespaceId, legacy);
-            await WaitForWorkerAsync(settings.WorkerUrl);
-            await ProvisionBotsAsync(settings.WorkerUrl, secret);
+            await WaitForWorkerAsync(settings.WorkerUrl!);
+            await ProvisionBotsAsync(settings.WorkerUrl!, secret);
         }
         else
         {
             // Ab v2 bleiben alle Bindings unangetastet; nur der eingebettete Code
             // wird ersetzt. So muessen Secret-Werte nie wieder ausgelesen werden.
             await UploadWorkerContentAsync(accountId, apiToken, scriptName);
-            await WaitForWorkerAsync(settings.WorkerUrl);
+            await WaitForWorkerAsync(settings.WorkerUrl!);
         }
 
-        var installedVersion = await GetWorkerVersionAsync(settings.WorkerUrl, secret);
+        var installedVersion = await GetWorkerVersionAsync(settings.WorkerUrl!, secret);
         if (installedVersion != CurrentWorkerVersion)
             return Response.Fail("Cloudflare accepted the upload, but the expected Worker version is not active yet.");
 
@@ -403,7 +508,7 @@ internal sealed class TelegramSync(GuardEngine engine) : BackgroundService
             true, settings.WorkerUrl, settings.SyncSecretProtected, true,
             accountId, scriptName, namespaceId, installedVersion);
         return Response.Success(
-            $"Worker updated to v{installedVersion}. Pairings, status and queued commands were preserved; the API token was not stored and can be revoked now.");
+            $"Worker updated to v{installedVersion}. Pairings, status and queued commands were preserved.");
     }
 
     private async Task<Response> RemoveWorkerAsync(Request request)
@@ -417,8 +522,12 @@ internal sealed class TelegramSync(GuardEngine engine) : BackgroundService
             settings.KvNamespaceId is null)
             return Response.Fail("Only a Worker deployed and managed by Monkey can be removed automatically.");
 
-        var accountId = ValidateAccountId(request.CloudflareAccountId);
-        var apiToken = ValidateApiToken(request.CloudflareApiToken);
+        var accountId = string.IsNullOrWhiteSpace(request.CloudflareAccountId)
+            ? ValidateAccountId(settings.CloudflareAccountId)
+            : ValidateAccountId(request.CloudflareAccountId);
+        var apiToken = string.IsNullOrWhiteSpace(request.CloudflareApiToken) && settings.ApiTokenProtected is { } storedToken
+            ? Dpapi.Unprotect(storedToken)
+            : ValidateApiToken(request.CloudflareApiToken);
         if (settings.CloudflareAccountId is { } storedAccount &&
             !string.Equals(storedAccount, accountId, StringComparison.OrdinalIgnoreCase))
             return Response.Fail("This Account ID does not match the account used to deploy the Worker.");

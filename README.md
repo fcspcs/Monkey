@@ -151,18 +151,21 @@ bot names and unique username suggestions; shows where Cloudflare's current
 dashboard hides the Account ID; opens a pre-filled, account-scoped API-token
 form with only **Workers Scripts: Edit** and **Workers KV Storage: Edit**; then
 deploys the Worker and KV store, installs the secrets and connects both bots.
-Cloudflare and bot credentials are used once and are not stored on the PC. Bot
-tokens and webhook keys are encrypted Cloudflare **secret bindings**, never
-ordinary KV values. The wizard links directly to Cloudflare's official
+Bot tokens and webhook keys are used once and are not stored on the PC — they
+become encrypted Cloudflare **secret bindings**, never ordinary KV values. The
+Cloudflare API token is kept, DPAPI-encrypted in Monkey's locked data folder
+where only the service account can read it, for exactly one purpose: Worker
+updates install themselves in the background. The wizard links directly to Cloudflare's official
 [Account ID](https://developers.cloudflare.com/fundamentals/account/find-account-and-zone-ids/)
 and [API token](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/)
 instructions if the dashboard labels change.
 
-The same tab checks the deployed Worker version and safely updates its code.
-Updates preserve pairings, the last status and queued commands. Monkey asks for
-a fresh, revocable Cloudflare token for each deployment or update and never
-keeps that token. A complete removal button deletes the exact managed Worker,
-its secret bindings and its dedicated KV store.
+When a Monkey update ships a newer Worker, the service updates the deployed
+Worker by itself within a few hours — pairings, the last status and queued
+commands are preserved. The Telegram tab can still check and update by hand,
+and revoking the token in Cloudflare turns updates manual again (Monkey will
+ask for a token once and keep the new one). A complete removal button deletes
+the exact managed Worker, its secret bindings and its dedicated KV store.
 
 The old manual/Wrangler route remains available as an
 **[advanced fallback](cloud/README.md)**.

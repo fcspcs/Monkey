@@ -12,7 +12,8 @@ public sealed record TelegramConfigView(
     string? CloudflareAccountId,
     string? ScriptName,
     string? KvNamespaceId,
-    int? WorkerVersion);
+    int? WorkerVersion,
+    string? ApiTokenProtected);
 
 /// <summary>
 /// Die gesamte Entscheidungslogik. Der Agent zeigt nur an und fragt an - hier faellt
@@ -706,7 +707,8 @@ internal sealed class GuardEngine
                 _state.Telegram.CloudflareAccountId,
                 _state.Telegram.ScriptName,
                 _state.Telegram.KvNamespaceId,
-                _state.Telegram.WorkerVersion);
+                _state.Telegram.WorkerVersion,
+                _state.Telegram.ApiTokenProtected);
     }
 
     public void SetTelegram(
@@ -732,6 +734,8 @@ internal sealed class GuardEngine
 
             if (!enabled)
             {
+                // Mit der Anbindung faellt auch der Schluessel zu ihr.
+                _state.Telegram.ApiTokenProtected = null;
                 _lastTelegramSync = null;
                 _telegramError = null;
             }
@@ -744,6 +748,22 @@ internal sealed class GuardEngine
                 : "Telegram link disabled.");
 
             if (enabled) KickTelegram();
+        }
+    }
+
+    /// <summary>
+    /// Merkt sich das Cloudflare-Token (verschluesselt) fuer selbsttaetige
+    /// Worker-Updates. Getrennt von SetTelegram, damit kein Aufrufer es aus
+    /// Versehen wieder wegraeumt.
+    /// </summary>
+    public void StoreTelegramApiToken(string apiTokenProtected)
+    {
+        lock (_gate)
+        {
+            _state.Telegram.ApiTokenProtected = apiTokenProtected;
+            _store.Save(_state);
+            _lastSave = _clock.Now;
+            Log.Write("Cloudflare token stored (encrypted) - worker updates are now automatic.");
         }
     }
 

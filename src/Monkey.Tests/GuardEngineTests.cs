@@ -560,6 +560,33 @@ public sealed class GuardEngineTests
     }
 
     [Fact]
+    public void TelegramApiToken_SurvivesReconfiguration_AndDiesWithTheLink()
+    {
+        var engine = TestEnv.Engine();
+
+        engine.SetTelegram(true, "https://monkey-telegram-x.example.workers.dev", "chiffrat",
+            managed: true, cloudflareAccountId: new string('a', 32),
+            scriptName: "monkey-telegram-x", kvNamespaceId: "kv1", workerVersion: 2);
+        engine.StoreTelegramApiToken("token-chiffrat");
+
+        Assert.Equal("token-chiffrat", engine.TelegramConfig().ApiTokenProtected);
+        Assert.Equal("token-chiffrat", TestEnv.PersistedState().Telegram.ApiTokenProtected);
+
+        // Ein spaeteres SetTelegram (etwa nach einem Worker-Update) darf das
+        // Token nicht wegraeumen - sonst waere jedes Update das letzte
+        // automatische.
+        engine.SetTelegram(true, "https://monkey-telegram-x.example.workers.dev", "chiffrat",
+            managed: true, cloudflareAccountId: new string('a', 32),
+            scriptName: "monkey-telegram-x", kvNamespaceId: "kv1", workerVersion: 3);
+        Assert.Equal("token-chiffrat", engine.TelegramConfig().ApiTokenProtected);
+
+        // Mit der Anbindung faellt auch der Schluessel zu ihr.
+        engine.SetTelegram(false, null, null);
+        Assert.Null(engine.TelegramConfig().ApiTokenProtected);
+        Assert.Null(TestEnv.PersistedState().Telegram.ApiTokenProtected);
+    }
+
+    [Fact]
     public void Status_ReflectsTelegramLink()
     {
         var engine = TestEnv.Engine();

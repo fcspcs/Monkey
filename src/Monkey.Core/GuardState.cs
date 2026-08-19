@@ -72,8 +72,16 @@ public sealed class TelegramSettings
     public string? SyncSecretProtected { get; set; }
 
     /// <summary>
+    /// Cloudflare-API-Token fuer selbsttaetige Worker-Updates, DPAPI-
+    /// verschluesselt wie das Sync-Secret: nur das Dienstkonto liest es.
+    /// Der Preis fuer Updates ohne Zutun; wer das Token bei Cloudflare
+    /// widerruft, ist wieder beim Einfuegen von Hand.
+    /// </summary>
+    public string? ApiTokenProtected { get; set; }
+
+    /// <summary>
     /// Metadaten des automatisch eingerichteten Workers. Sie sind keine
-    /// Geheimnisse; das API-Token wird weiterhin niemals gespeichert.
+    /// Geheimnisse.
     /// </summary>
     public bool Managed { get; set; }
     public string? CloudflareAccountId { get; set; }

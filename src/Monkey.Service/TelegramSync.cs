@@ -21,11 +21,8 @@ public sealed class TelegramSnapshot
     public double EarnedSeconds { get; init; }
     public int DailyGrantMinutes { get; init; }
     public int CapMinutes { get; init; }
-    public int MaxManualGrantMinutes { get; init; }
-    public int MaxPauseMinutes { get; init; }
     public int EvolutionStage { get; init; }
     public bool Counting { get; init; }
-    public double PauseRemainingSeconds { get; init; }
     public string? LastAccrualDate { get; init; }
     public int TzOffsetMinutes { get; init; }
     public long SavedAtUtcMs { get; init; }
@@ -49,7 +46,7 @@ internal sealed class TelegramSync(GuardEngine engine) : BackgroundService
     private static readonly Regex WebhookSecretPattern = new(@"^[A-Za-z0-9_\-]{16,128}$", RegexOptions.Compiled);
     private static readonly Regex AccountIdPattern = new(@"^[a-fA-F0-9]{32}$", RegexOptions.Compiled);
     private const string WorkerCompatibilityDate = "2024-11-01";
-    private const int CurrentWorkerVersion = 2;
+    private const int CurrentWorkerVersion = 3;
 
     /// <summary>
     /// Quittungen, die den Worker noch nicht erreicht haben. Bleiben liegen, bis

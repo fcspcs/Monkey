@@ -147,29 +147,6 @@
                             </StackPanel>
                         </GroupBox>
 
-                        <GroupBox Header="Pause the limit">
-                            <StackPanel>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBox x:Name="PauseMinutes" Text="60"
-                                             Style="{StaticResource NumberField}"/>
-                                    <TextBlock Text="minutes" Style="{StaticResource Hint}" Margin="10,0,18,0"/>
-                                    <Button Content="15" Tag="15" Style="{StaticResource ChipButton}" Click="OnPausePreset" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                    <Button Content="30" Tag="30" Style="{StaticResource ChipButton}" Click="OnPausePreset" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                    <Button Content="60" Tag="60" Style="{StaticResource ChipButton}" Click="OnPausePreset" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                    <Button Content="120" Tag="120" Style="{StaticResource ChipButton}" Click="OnPausePreset" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                    <Button Content="240" Tag="240" Style="{StaticResource ChipButton}" Click="OnPausePreset" VerticalAlignment="Center"/>
-                                </StackPanel>
-
-                                <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
-                                    <Button x:Name="PauseButton" Content="Start pause"
-                                            Style="{StaticResource PrimaryButton}"
-                                            Click="OnPause" IsDefault="True"/>
-                                    <Button x:Name="ResumeButton" Content="End pause"
-                                            Click="OnResume" Margin="10,0,0,0"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </GroupBox>
-
                     </StackPanel>
 
                     <!-- ============================================== Statistics -->
@@ -565,7 +542,7 @@
                                 <GroupBox Header="Connect your phone">
                                     <StackPanel>
                                         <TextBlock Style="{StaticResource Body}" VerticalAlignment="Top" Margin="0,0,0,14"
-                                                   Text="Check the balance, add time and pause Monkey from Telegram — even while this PC is off. Two bots keep the roles apart: yours only reports, the friend's may give."/>
+                                                   Text="Check the balance and add time from Telegram — even while this PC is off. Two bots keep the roles apart: yours only reports, the friend's may give."/>
                                         <Border Background="{StaticResource SurfaceSunkenBrush}" CornerRadius="{StaticResource PanelRadius}"
                                                 Padding="16,12" Margin="0,0,0,14">
                                             <StackPanel>
@@ -699,7 +676,7 @@
                                     <GroupBox Header="Create the friend's bot">
                                         <StackPanel>
                                             <TextBlock Style="{StaticResource Body}" VerticalAlignment="Top" Margin="0,0,0,14"
-                                                       Text="This bot belongs to the person who holds the master password: it may add time and pause. Same routine in @BotFather — three messages, then the token."/>
+                                                       Text="This bot belongs to the person who holds the master password: it may add time. Same routine in @BotFather — three messages, then the token."/>
                                             <StackPanel Orientation="Horizontal" Margin="0,0,0,18">
                                                 <Button Content="Open @BotFather" Click="OnOpenBotFather"/>
                                             </StackPanel>

@@ -51,20 +51,18 @@ public partial class OverlayWindow : Window
     /// Hintergruende und einen dunklen fuer helle - auf einem weissen Desktop
     /// waere die helle Fassung sonst kaum zu lesen.
     /// </summary>
-    private readonly record struct Palette(Color Normal, Color Warning, Color Critical, Color Paused, Color Idle);
+    private readonly record struct Palette(Color Normal, Color Warning, Color Critical, Color Idle);
 
     private static readonly Palette LightPalette = new(
         Normal: Color.FromRgb(0xF2, 0xF4, 0xF8),
         Warning: Color.FromRgb(0xFF, 0xC1, 0x4E),
         Critical: Color.FromRgb(0xFF, 0x6B, 0x5E),
-        Paused: Color.FromRgb(0x7A, 0xC7, 0xFF),
         Idle: Color.FromRgb(0x9A, 0x9A, 0xA2));
 
     private static readonly Palette DarkPalette = new(
         Normal: Color.FromRgb(0x14, 0x14, 0x1A),
         Warning: Color.FromRgb(0xA8, 0x66, 0x00),
         Critical: Color.FromRgb(0xC0, 0x2E, 0x22),
-        Paused: Color.FromRgb(0x1B, 0x63, 0xA6),
         Idle: Color.FromRgb(0x6A, 0x6A, 0x72));
 
     private static readonly Brush PanelBrush = new SolidColorBrush(Color.FromArgb(0xE0, 0x10, 0x10, 0x14));
@@ -318,19 +316,6 @@ public partial class OverlayWindow : Window
         TimeLabel.Text = showElapsed
             ? FormatElapsed(status.SessionElapsedSeconds)
             : FormatRemaining(status.BalanceSeconds);
-
-        if (status.Paused)
-        {
-            // Auch hier wechselt die Zahl beim Hovern - dann erklaeren, was sie
-            // bedeutet, statt nur die Pausendauer zu zeigen. Bewusst derselbe
-            // kurze Text wie sonst, damit die Breite beim Hovern nicht springt;
-            // dass pausiert ist, zeigt bereits die Farbe.
-            CaptionLabel.Text = _hovering
-                ? (showElapsed ? "used so far" : "still left")
-                : (status.PauseUntil is { } until ? $"paused until {until:HH:mm}" : "paused");
-            Colorize(CustomColor ?? Tones.Paused);
-            return;
-        }
 
         // Beim Hovern wird der jeweils andere Wert gezeigt - dann sagt die
         // Beschriftung ausdruecklich, was die Zahl darueber bedeutet.

@@ -13,8 +13,6 @@ public static class RequestType
     /// eigenen Nutzungsdaten dessen, der davorsitzt.
     /// </summary>
     public const string History = "history";
-    public const string Pause = "pause";
-    public const string Resume = "resume";
     public const string AddTime = "addtime";
     public const string SetConfig = "setconfig";
     public const string ChangePassword = "changepassword";
@@ -89,9 +87,6 @@ public sealed class StatusDto
     /// Hochzaehl-Modus.
     /// </summary>
     public double SessionElapsedSeconds { get; set; }
-
-    public bool Paused { get; set; }
-    public DateTimeOffset? PauseUntil { get; set; }
 
     /// <summary>Laeuft die Uhr gerade, also wird gerade verbraucht?</summary>
     public bool Counting { get; set; }

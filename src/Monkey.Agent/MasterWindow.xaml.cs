@@ -238,13 +238,9 @@ public partial class MasterWindow : ChromeWindow
         // die Zahl.
         BalanceText.Text = FormatSpan(status.BalanceSeconds);
 
-        StateText.Text = status switch
-        {
-            { Paused: true, PauseUntil: { } until } => $"Paused until {until:HH:mm}.",
-            { Paused: true } => "Paused.",
-            { Counting: true } => $"The clock is running. {FormatSpan(status.SessionElapsedSeconds)} since sign-in.",
-            _ => "The clock is paused right now.",
-        };
+        StateText.Text = status.Counting
+            ? $"The clock is running. {FormatSpan(status.SessionElapsedSeconds)} since sign-in."
+            : "The clock is stopped right now.";
 
         if (status.ClockTamperEvents > 0)
             StateText.Text += $"  ({status.ClockTamperEvents} clock jump(s) detected)";
@@ -776,38 +772,6 @@ public partial class MasterWindow : ChromeWindow
 
     private static string LongDate(DateOnly date) =>
         date.ToString("ddd d MMM", CultureInfo.InvariantCulture);
-
-    /// <summary>Uebernimmt eine der Vorgabelaengen in das Minutenfeld.</summary>
-    private void OnPausePreset(object sender, RoutedEventArgs e)
-    {
-        if (sender is System.Windows.Controls.Button { Tag: string minutes })
-            PauseMinutes.Text = minutes;
-    }
-
-    private async void OnPause(object sender, RoutedEventArgs e)
-    {
-        if (!TryReadInt(PauseMinutes.Text, out var minutes) || minutes <= 0)
-        {
-            Show(false, "Please give the duration in whole minutes.");
-            return;
-        }
-
-        if (!RequireMasterPassword()) return;
-
-        await SendAsync(new Request
-        {
-            Type = RequestType.Pause,
-            Password = MasterPassword.Password,
-            Minutes = minutes,
-        });
-    }
-
-    private async void OnResume(object sender, RoutedEventArgs e)
-    {
-        if (!RequireMasterPassword()) return;
-
-        await SendAsync(new Request { Type = RequestType.Resume, Password = MasterPassword.Password });
-    }
 
     private async void OnPlus30(object sender, RoutedEventArgs e) => await AddMinutesAsync(30);
 
@@ -1532,8 +1496,6 @@ public partial class MasterWindow : ChromeWindow
 
     private void SetBusy(bool busy)
     {
-        PauseButton.IsEnabled = !busy;
-        ResumeButton.IsEnabled = !busy;
         Plus30Button.IsEnabled = !busy;
         Minus30Button.IsEnabled = !busy;
         SaveConfigButton.IsEnabled = !busy;

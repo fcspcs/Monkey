@@ -352,8 +352,7 @@ public partial class App : Application
         {
             header.Text = _status is null
                 ? "Service unreachable"
-                : $"Time left: {FormatMinutes(_status.BalanceSeconds)}"
-                  + (_status.Paused ? "  (paused)" : string.Empty);
+                : $"Time left: {FormatMinutes(_status.BalanceSeconds)}";
 
             toggleOverlay.Text = _overlayVisible ? "Hide overlay" : "Show overlay";
             toggleMode.Text = _overlay?.CountUp == true
@@ -390,13 +389,10 @@ public partial class App : Application
         if (_tray is null) return;
 
         // Das Symbol bleibt immer dasselbe; den Zustand sagt der Tooltip.
-        var tip = _status switch
-        {
-            null => "Monkey - service unreachable",
-            { Paused: true } => $"Monkey - paused, {FormatMinutes(_status.BalanceSeconds)} banked",
-            _ => $"Monkey - {FormatMinutes(_status.BalanceSeconds)} left, "
-                 + $"{FormatMinutes(_status.SessionElapsedSeconds)} used",
-        };
+        var tip = _status is null
+            ? "Monkey - service unreachable"
+            : $"Monkey - {FormatMinutes(_status.BalanceSeconds)} left, "
+              + $"{FormatMinutes(_status.SessionElapsedSeconds)} used";
 
         // Der Tooltip der Taskleiste ist auf 63 Zeichen begrenzt.
         _tray.Text = tip.Length > 62 ? tip[..62] : tip;

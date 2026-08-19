@@ -148,10 +148,7 @@ async function reportState(env, state = {}) {
       earnedSeconds: 600,
       dailyGrantMinutes: 30,
       capMinutes: 240,
-      maxManualGrantMinutes: 240,
-      maxPauseMinutes: 480,
       counting: false,
-      pauseRemainingSeconds: 0,
       lastAccrualDate: '2026-08-16',
       tzOffsetMinutes: 0,
       ...state,
@@ -171,13 +168,13 @@ describe('routing and authentication', () => {
     assert.match(await response.text(), /running/);
   });
 
-  test('/info requires the sync secret and names version 2', async () => {
+  test('/info requires the sync secret and names version 3', async () => {
     const env = makeEnv();
     assert.equal((await send(env, '/info', { method: 'GET', secret: 'wrong' })).status, 401);
 
     const response = await send(env, '/info', { method: 'GET' });
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { version: 2, secretBindings: true });
+    assert.deepEqual(await response.json(), { version: 3, secretBindings: true });
   });
 
   test('PC endpoints reject a wrong or missing bearer', async () => {
@@ -443,7 +440,7 @@ describe('status projection', () => {
     assert.match(lastReply(), /PC: off/);
     assert.match(lastReply(), /Includes 6 daily top-up/);
     assert.match(lastReply(), /Tomorrow: 3 h 40 min/);
-    assert.match(lastReply(), /Commands: \/add MIN/);
+    assert.match(lastReply(), /Commands: \/status, \/add MIN/);
   });
 
   test('the projection respects the cap', async () => {
@@ -476,14 +473,14 @@ describe('status projection', () => {
     assert.match(lastReply(), /Balance: 40 min/);
   });
 
-  test('a running pause is announced', async () => {
+  test('the status text knows nothing of pausing', async () => {
     const env = await provisioned();
     await paired(env, 'monkey', 111);
-    await reportState(env, { pauseRemainingSeconds: 600 });
+    await reportState(env);
 
     await webhook(env, 'monkey', update(111, '/status'));
 
-    assert.match(lastReply(), /paused for another 10 min/);
+    assert.doesNotMatch(lastReply(), /pause/i);
   });
 });
 
@@ -513,7 +510,7 @@ describe('friend commands', () => {
     assert.equal((await queuedCommands(env)).length, 0);
   });
 
-  test('/add validates its argument and the per-go limit', async () => {
+  test('/add validates its argument but knows no per-go limit', async () => {
     const env = await friendReady();
 
     await webhook(env, 'friend', update(222, '/add'));
@@ -522,10 +519,15 @@ describe('friend commands', () => {
     await webhook(env, 'friend', update(222, '/add nope'));
     assert.match(lastReply(), /Usage: \/add/);
 
-    await webhook(env, 'friend', update(222, '/add 500'));
-    assert.match(lastReply(), /At most 240 min/);
+    await webhook(env, 'friend', update(222, '/add 5000001'));
+    assert.match(lastReply(), /surely a typo/);
 
     assert.equal((await queuedCommands(env)).length, 0);
+
+    // Weit ueber dem alten Deckel, aber gewollt: der Freund gibt, was er will.
+    await webhook(env, 'friend', update(222, '/add 500'));
+    assert.match(lastReply(), /Adding 500 min/);
+    assert.equal((await queuedCommands(env))[0].minutes, 500);
   });
 
   test('/add queues the command and tells whether the PC is on', async () => {
@@ -548,15 +550,15 @@ describe('friend commands', () => {
     ]);
   });
 
-  test('/pause clamps to the maximum, /resume queues plainly', async () => {
+  test('/pause and /resume are gone - the friend only gets help', async () => {
     const env = await friendReady();
 
-    await webhook(env, 'friend', update(222, '/pause 99999'));
+    await webhook(env, 'friend', update(222, '/pause 60'));
+    assert.match(lastReply(), /Commands: \/status/);
     await webhook(env, 'friend', update(222, '/resume'));
+    assert.match(lastReply(), /Commands: \/status/);
 
-    const commands = await queuedCommands(env);
-    assert.equal(commands.find((c) => c.type === 'pause').minutes, 480);
-    assert.equal(commands.find((c) => c.type === 'resume').minutes, 0);
+    assert.equal((await queuedCommands(env)).length, 0);
   });
 
   test('a full queue refuses further commands', async () => {
@@ -609,16 +611,16 @@ describe('sync', () => {
     await paired(env, 'friend', 222);
     await reportState(env);
     await webhook(env, 'friend', update(222, '/add 30'));
-    await webhook(env, 'friend', update(222, '/pause 60'));
+    await webhook(env, 'friend', update(222, '/add 60'));
 
     const response = await send(env, '/sync', { body: {} });
 
     const { commands } = await response.json();
     assert.equal(commands.length, 2);
-    const add = commands.find((c) => c.type === 'add');
-    assert.equal(add.minutes, 30);
+    const add = commands.find((c) => c.minutes === 30);
+    assert.equal(add.type, 'add');
     assert.equal(typeof add.id, 'string');
-    assert.equal(commands.find((c) => c.type === 'pause').minutes, 60);
+    assert.equal(commands.find((c) => c.minutes === 60).type, 'add');
   });
 
   test('unknown receipt ids are ignored quietly', async () => {

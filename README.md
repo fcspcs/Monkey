@@ -7,8 +7,7 @@ vanish — it rolls over.**
 
 Monkey is a small Windows tool for people who'd like to spend less time staring
 at a screen, without relying on willpower alone. When your time runs out, Monkey
-signs you out. Anything that adds time or pauses the limit needs a master
-password.
+signs you out. Anything that adds time needs a master password.
 
 ---
 
@@ -141,7 +140,7 @@ count.
 Check the balance and top up from your phone — **even while the PC is off**:
 
 - **Monkey's bot** answers `/status`: balance, saved time, monkey stage.
-- **The friend's bot** can also add time, pause and resume — remote control
+- **The friend's bot** can also add time, as much as it likes — remote control
   without the master password ever leaving the PC.
 
 It runs through a tiny relay in your **own free Cloudflare account** — this

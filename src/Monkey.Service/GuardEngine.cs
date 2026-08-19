@@ -150,10 +150,9 @@ internal sealed class GuardEngine
             foreach (var gone in _sessionElapsed.Keys.Where(id => !active.Contains(id)).ToList())
                 _sessionElapsed.Remove(gone);
 
-            var paused = IsPaused();
             var counting = CountingSessions(all);
 
-            if (!paused && counting.Count > 0)
+            if (counting.Count > 0)
             {
                 _state.BalanceSeconds -= awake.TotalSeconds;
 
@@ -174,7 +173,7 @@ internal sealed class GuardEngine
             // der Leerlauf-Schonfristen beginnt von vorn.
             if (_state.BalanceSeconds > 0) _state.EmptyGraceRuns = 0;
 
-            Enforce(paused, counting, freshLogin);
+            Enforce(counting, freshLogin);
 
             if (_clock.Now - _lastSave >= SaveInterval)
             {
@@ -313,16 +312,6 @@ internal sealed class GuardEngine
         _state.EarnedSeconds = Math.Clamp(_state.EarnedSeconds, 0, Math.Max(0, Math.Min(_state.BalanceSeconds, cap)));
     }
 
-    private bool IsPaused()
-    {
-        if (_state.PauseUntil is not { } until) return false;
-        if (_clock.Now < until) return true;
-
-        _state.PauseUntil = null;
-        Log.Write("Pause expired, the limit is active again.");
-        return false;
-    }
-
     /// <summary>
     /// Sitzungen, in denen gerade jemand sitzt. Gesperrte Sitzungen, laufender
     /// Bildschirmschoner und ausgeschalteter Bildschirm zaehlen nicht - alles
@@ -358,9 +347,9 @@ internal sealed class GuardEngine
         return result;
     }
 
-    private void Enforce(bool paused, List<int> sessions, bool freshLogin)
+    private void Enforce(List<int> sessions, bool freshLogin)
     {
-        if (paused || sessions.Count == 0)
+        if (sessions.Count == 0)
         {
             ResetGrace();
             _previousRemainingMinutes = double.MaxValue;
@@ -504,19 +493,6 @@ internal sealed class GuardEngine
                     _agents[request.SessionId] = new AgentReport(_clock.Now, request.ScreensaverRunning, request.DisplayOff);
                     return Response.Success(status: BuildStatus(request.SessionId));
 
-                case RequestType.Pause:
-                    return HandlePause(request);
-
-                case RequestType.Resume:
-                    return WithPassword(request.Password, () =>
-                    {
-                        _state.PauseUntil = null;
-                        _store.Save(_state);
-                        KickTelegram();
-                        Log.Write("Pause ended early.");
-                        return Response.Success("The limit is active again.", BuildStatus(request.SessionId));
-                    });
-
                 case RequestType.AddTime:
                     return HandleAddTime(request);
 
@@ -542,21 +518,6 @@ internal sealed class GuardEngine
                     return Response.Fail($"Unknown request '{request.Type}'.");
             }
         }
-    }
-
-    private Response HandlePause(Request request)
-    {
-        var minutes = Math.Clamp(request.Minutes, 1, _state.Config.MaxPauseMinutes);
-        return WithPassword(request.Password, () =>
-        {
-            _state.PauseUntil = _clock.Now.AddMinutes(minutes);
-            ResetGrace();
-            _store.Save(_state);
-            KickTelegram();
-            Log.Write($"Paused for {minutes} min until {_state.PauseUntil:HH:mm}.");
-            return Response.Success($"Paused until {_state.PauseUntil:HH:mm}.",
-                BuildStatus(request.SessionId));
-        });
     }
 
     /// <summary>
@@ -614,7 +575,6 @@ internal sealed class GuardEngine
             config.CapMinutes = Math.Clamp(incoming.CapMinutes, config.DailyGrantMinutes, 100 * 24 * 60);
             config.GraceSeconds = Math.Clamp(incoming.GraceSeconds, 10, 3600);
             config.LoginGraceSeconds = Math.Clamp(incoming.LoginGraceSeconds, 10, 3600);
-            config.MaxPauseMinutes = Math.Clamp(incoming.MaxPauseMinutes, 1, 30 * 24 * 60);
             config.PauseOnLock = incoming.PauseOnLock;
             config.PauseOnScreensaver = incoming.PauseOnScreensaver;
             config.WarnMinutes = Math.Clamp(incoming.WarnMinutes, 1, 24 * 60);
@@ -812,19 +772,14 @@ internal sealed class GuardEngine
     {
         lock (_gate)
         {
-            var paused = _state.PauseUntil is { } until && _clock.Now < until;
-
             return new TelegramSnapshot
             {
                 BalanceSeconds = Math.Max(0, _state.BalanceSeconds),
                 EarnedSeconds = Math.Max(0, _state.EarnedSeconds),
                 DailyGrantMinutes = _state.Config.DailyGrantMinutes,
                 CapMinutes = _state.Config.CapMinutes,
-                MaxManualGrantMinutes = _state.Config.MaxManualGrantMinutes,
-                MaxPauseMinutes = _state.Config.MaxPauseMinutes,
                 EvolutionStage = _state.EvolutionStage,
-                Counting = !paused && CountingSessions(_sessions()).Count > 0,
-                PauseRemainingSeconds = paused ? (_state.PauseUntil!.Value - _clock.Now).TotalSeconds : 0,
+                Counting = CountingSessions(_sessions()).Count > 0,
                 LastAccrualDate = _state.LastAccrualDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                 TzOffsetMinutes = (int)DateTimeOffset.Now.Offset.TotalMinutes,
                 SavedAtUtcMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
@@ -834,8 +789,7 @@ internal sealed class GuardEngine
 
     /// <summary>
     /// Fernbefehle des Freundes anwenden. Bewusst enger als die Pipe: nur
-    /// nachlegen, pausieren, fortsetzen - keine Einstellungen, kein Passwort,
-    /// kein Teardown. Jeder Befehl wird genau einmal ausgefuehrt, auch wenn der
+    /// nachlegen - keine Einstellungen, kein Passwort, kein Teardown. Jeder Befehl wird genau einmal ausgefuehrt, auch wenn der
     /// Worker ihn nach einer verlorenen Quittung erneut zustellt.
     /// </summary>
     public List<RemoteResult> ApplyRemoteCommands(IReadOnlyList<RemoteCommand> commands)
@@ -882,11 +836,12 @@ internal sealed class GuardEngine
         {
             case "add":
             {
+                // Bewusst ohne den Deckel des Passwort-Nachlegens: der Freund
+                // ist eine gekoppelte Vertrauensrolle, seine Gaben sind nicht
+                // gedeckelt.
                 var minutes = command.Minutes;
                 if (minutes < 1)
                     return (false, "The number of minutes must be positive.");
-                if (minutes > _state.Config.MaxManualGrantMinutes)
-                    return (false, $"At most {FormatMinutes(_state.Config.MaxManualGrantMinutes)} can be added per go.");
 
                 _state.BalanceSeconds += minutes * 60.0;
                 Today().AddedSeconds += minutes * 60.0;
@@ -901,20 +856,11 @@ internal sealed class GuardEngine
                 return (true, $"Added {minutes} min. The balance is now {Format(_state.BalanceSeconds)}.");
             }
 
+            // Ein noch nicht aktualisierter Worker kann diese Befehle weiterhin
+            // zustellen - die Absage erklaert dem Freund, warum nichts passiert.
             case "pause":
-            {
-                var minutes = Math.Clamp(command.Minutes, 1, _state.Config.MaxPauseMinutes);
-                _state.PauseUntil = _clock.Now.AddMinutes(minutes);
-                ResetGrace();
-
-                Log.Write($"Telegram: paused remotely for {minutes} min.");
-                return (true, $"Paused for {minutes} min.");
-            }
-
             case "resume":
-                _state.PauseUntil = null;
-                Log.Write("Telegram: pause ended remotely.");
-                return (true, "The limit is active again.");
+                return (false, "Pausing was removed from Monkey. Use /add to give time instead.");
 
             default:
                 return (false, "Unknown command.");
@@ -969,10 +915,8 @@ internal sealed class GuardEngine
 
     private StatusDto BuildStatus(int sessionId)
     {
-        var paused = _state.PauseUntil is { } until && _clock.Now < until;
-
         double? untilLogoff = null;
-        if (_zeroSince is { } since && !paused)
+        if (_zeroSince is { } since)
         {
             var left = _activeGrace - (_clock.Now - since);
             untilLogoff = Math.Max(0, left.TotalSeconds);
@@ -982,9 +926,7 @@ internal sealed class GuardEngine
         {
             BalanceSeconds = Math.Max(0, _state.BalanceSeconds),
             SessionElapsedSeconds = _sessionElapsed.GetValueOrDefault(sessionId),
-            Paused = paused,
-            PauseUntil = paused ? _state.PauseUntil : null,
-            Counting = !paused && CountingSessions(_sessions()).Count > 0,
+            Counting = CountingSessions(_sessions()).Count > 0,
             SecondsUntilLogoff = untilLogoff,
             WarningMinutes = _activeWarning is { } warning && _clock.Now - _warningIssuedAt < WarningVisibility
                 ? warning

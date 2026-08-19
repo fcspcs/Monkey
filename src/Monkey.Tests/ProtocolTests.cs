@@ -52,7 +52,7 @@ public sealed class ProtocolTests
         var response = Response.Success("alles gut", new StatusDto
         {
             BalanceSeconds = 100,
-            Paused = true,
+            Counting = true,
             EvolutionStage = 3,
             PersistenceError = "Platte voll",
             TelegramEnabled = true,
@@ -70,7 +70,7 @@ public sealed class ProtocolTests
         Assert.True(restored.Ok);
         Assert.Equal("alles gut", restored.Message);
         Assert.Equal(100, restored.Status!.BalanceSeconds);
-        Assert.True(restored.Status.Paused);
+        Assert.True(restored.Status.Counting);
         Assert.Equal(3, restored.Status.EvolutionStage);
         Assert.Equal("Platte voll", restored.Status.PersistenceError);
         Assert.True(restored.Status.TelegramEnabled);

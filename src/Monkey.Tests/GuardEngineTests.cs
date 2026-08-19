@@ -327,32 +327,16 @@ public sealed class GuardEngineTests
     // ---------------------------------------------------------------- Pause
 
     [Fact]
-    public void Pause_ClampsToMaximum_AndResumeEndsIt()
+    public void Pause_IsGone_TheRequestIsUnknown()
     {
-        var engine = TestEnv.Engine(s => s.Config.MaxPauseMinutes = 480);
+        // Die Pause wurde entfernt - ein Agent alter Fassung, der sie noch
+        // anfragt, bekommt eine Absage statt einer stillen Wirkung.
+        var engine = TestEnv.Engine();
 
-        var paused = engine.Handle(RequestType.Pause, TestEnv.Password, r => r.Minutes = 100_000);
-        Assert.True(paused.Ok);
+        var response = engine.Handle("pause", TestEnv.Password, r => r.Minutes = 60);
 
-        var status = engine.Status();
-        Assert.True(status.Paused);
-        Assert.NotNull(status.PauseUntil);
-        Assert.True(status.PauseUntil <= DateTimeOffset.Now.AddMinutes(481));
-
-        Assert.True(engine.Handle(RequestType.Resume, TestEnv.Password).Ok);
-        Assert.False(engine.Status().Paused);
-    }
-
-    [Fact]
-    public void Pause_StopsConsumption()
-    {
-        var engine = TestEnv.Engine(s => s.BalanceSeconds = 300, TestEnv.User());
-        engine.Handle(RequestType.Pause, TestEnv.Password, r => r.Minutes = 60);
-
-        Thread.Sleep(100);
-        engine.Tick(Tick);
-
-        Assert.Equal(300, engine.Status().BalanceSeconds, 3);
+        Assert.False(response.Ok);
+        Assert.Contains("Unknown request", response.Message);
     }
 
     // -------------------------------------------------------- Einstellungen
@@ -369,7 +353,6 @@ public sealed class GuardEngineTests
             WarnMinutes = 0,               // -> 1
             GraceSeconds = 1,              // -> 10
             LoginGraceSeconds = 100_000,   // -> 3600
-            MaxPauseMinutes = 0,           // -> 1
             MaxManualGrantMinutes = 100_000,
         });
 
@@ -380,7 +363,6 @@ public sealed class GuardEngineTests
         Assert.Equal(1, config.WarnMinutes);
         Assert.Equal(10, config.GraceSeconds);
         Assert.Equal(3600, config.LoginGraceSeconds);
-        Assert.Equal(1, config.MaxPauseMinutes);
 
         // Das Pro-Vorgang-Limit wird bei der Installation festgelegt und laesst
         // sich hier nicht aufweichen.
@@ -431,14 +413,16 @@ public sealed class GuardEngineTests
     }
 
     [Fact]
-    public void RemoteAdd_OverPerGoLimit_IsRejected()
+    public void RemoteAdd_KnowsNoPerGoLimit()
     {
-        var engine = TestEnv.Engine(s => s.Config.MaxManualGrantMinutes = 240);
+        // Der Deckel des Passwort-Nachlegens gilt fuer den Freund nicht:
+        // er ist eine gekoppelte Vertrauensrolle und gibt, was er will.
+        var engine = TestEnv.Engine(s => s.Config.MaxManualGrantMinutes = 30);
 
-        var results = engine.ApplyRemoteCommands([new RemoteCommand("c1", "add", 241)]);
+        var results = engine.ApplyRemoteCommands([new RemoteCommand("c1", "add", 100_000)]);
 
-        Assert.False(Assert.Single(results).Ok);
-        Assert.Equal(0, engine.Status().BalanceSeconds, 1);
+        Assert.True(Assert.Single(results).Ok);
+        Assert.Equal(100_000 * 60.0, engine.Status().BalanceSeconds, 1);
     }
 
     [Fact]
@@ -456,17 +440,25 @@ public sealed class GuardEngineTests
     }
 
     [Fact]
-    public void RemotePause_ClampsToMaximum_AndResumeEndsIt()
+    public void RemotePauseAndResume_AreRefusedWithAnExplanation()
     {
-        var engine = TestEnv.Engine(s => s.Config.MaxPauseMinutes = 60);
+        // Ein noch nicht aktualisierter Worker kann sie weiterhin zustellen.
+        var engine = TestEnv.Engine(s => s.BalanceSeconds = 300, TestEnv.User());
 
-        engine.ApplyRemoteCommands([new RemoteCommand("p1", "pause", 100_000)]);
-        var status = engine.Status();
-        Assert.True(status.Paused);
-        Assert.True(status.PauseUntil <= DateTimeOffset.Now.AddMinutes(61));
+        var results = engine.ApplyRemoteCommands(
+        [
+            new RemoteCommand("p1", "pause", 60),
+            new RemoteCommand("r1", "resume", 0),
+        ]);
 
-        engine.ApplyRemoteCommands([new RemoteCommand("r1", "resume", 0)]);
-        Assert.False(engine.Status().Paused);
+        Assert.Equal(2, results.Count);
+        Assert.All(results, r => Assert.False(r.Ok));
+        Assert.All(results, r => Assert.Contains("removed", r.Message));
+
+        // Und die Uhr laeuft unbeirrt weiter.
+        Thread.Sleep(100);
+        engine.Tick(Tick);
+        Assert.True(engine.Status().BalanceSeconds < 300);
     }
 
     [Fact]
@@ -517,7 +509,6 @@ public sealed class GuardEngineTests
             s.Config.DailyGrantMinutes = 30;
             s.Config.CapMinutes = 240;
             s.Config.MaxManualGrantMinutes = 120;
-            s.Config.MaxPauseMinutes = 480;
         });
 
         var snapshot = engine.BuildTelegramSnapshot();
@@ -526,12 +517,9 @@ public sealed class GuardEngineTests
         Assert.Equal(600, snapshot.EarnedSeconds, 1);
         Assert.Equal(30, snapshot.DailyGrantMinutes);
         Assert.Equal(240, snapshot.CapMinutes);
-        Assert.Equal(120, snapshot.MaxManualGrantMinutes);
-        Assert.Equal(480, snapshot.MaxPauseMinutes);
         Assert.Equal("2026-08-10", snapshot.LastAccrualDate);
         Assert.Equal((int)DateTimeOffset.Now.Offset.TotalMinutes, snapshot.TzOffsetMinutes);
         Assert.False(snapshot.Counting);
-        Assert.Equal(0, snapshot.PauseRemainingSeconds, 1);
         Assert.True(Math.Abs(snapshot.SavedAtUtcMs - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) < 5_000);
     }
 

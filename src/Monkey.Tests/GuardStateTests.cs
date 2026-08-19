@@ -41,7 +41,6 @@ public sealed class GuardStateTests
             EarnedSeconds = 600,
             LastAccrualDate = new DateOnly(2026, 8, 16),
             TrustedNow = new DateTimeOffset(2026, 8, 16, 12, 0, 0, TimeSpan.FromHours(2)),
-            PauseUntil = new DateTimeOffset(2026, 8, 16, 13, 0, 0, TimeSpan.FromHours(2)),
             ClockTamperEvents = 3,
             EmptyGraceRuns = 2,
             AppliedRemoteCommandIds = ["a", "b"],
@@ -64,7 +63,6 @@ public sealed class GuardStateTests
         Assert.Equal(state.EarnedSeconds, restored.EarnedSeconds);
         Assert.Equal(state.LastAccrualDate, restored.LastAccrualDate);
         Assert.Equal(state.TrustedNow, restored.TrustedNow);
-        Assert.Equal(state.PauseUntil, restored.PauseUntil);
         Assert.Equal(state.ClockTamperEvents, restored.ClockTamperEvents);
         Assert.Equal(state.EmptyGraceRuns, restored.EmptyGraceRuns);
         Assert.Equal(state.AppliedRemoteCommandIds, restored.AppliedRemoteCommandIds);

@@ -41,9 +41,6 @@ public sealed class GuardConfig
     /// <summary>Gesperrte Sitzung haelt die Uhr an.</summary>
     public bool PauseOnLock { get; set; } = true;
 
-    /// <summary>Laengste am Stueck erlaubte Master-Pause.</summary>
-    public int MaxPauseMinutes { get; set; } = 480;
-
     /// <summary>
     /// Neue Releases selbststaendig installieren. Braucht kein Passwort, denn es
     /// kann nur in eine Richtung: eine neuere, vom Projektschluessel signierte
@@ -142,9 +139,6 @@ public sealed class GuardState
     /// damit unabhaengig davon, ob jemand an der Systemzeit dreht.
     /// </summary>
     public DateTimeOffset TrustedNow { get; set; }
-
-    /// <summary>Master-Pause laeuft bis hierhin (TrustedNow-Zeitbasis).</summary>
-    public DateTimeOffset? PauseUntil { get; set; }
 
     /// <summary>Zaehler fuer erkannte Systemzeit-Manipulationen.</summary>
     public int ClockTamperEvents { get; set; }

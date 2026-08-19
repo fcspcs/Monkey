@@ -418,6 +418,13 @@ public partial class MasterWindow : ChromeWindow
     /// </summary>
     private void OnOpacityChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
+        // Schon beim Einlesen des XAML hebt Minimum="20" den Startwert 0 an,
+        // und der Regler meldet sich, bevor es die Prozentanzeige daneben
+        // ueberhaupt gibt. Der Wert dieser Meldung ist ausserdem nur das
+        // Hochzwingen aufs Minimum - ihn zu speichern wuerde die gemerkte
+        // Einstellung mit 20 ueberschreiben.
+        if (OpacityValue is null) return;
+
         ShowOpacityValue();
 
         if (_loadingDisplay) return;

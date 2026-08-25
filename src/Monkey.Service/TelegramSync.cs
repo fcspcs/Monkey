@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
@@ -36,9 +37,32 @@ public sealed class TelegramSnapshot
 /// was <see cref="GuardEngine.ApplyRemoteCommands"/> zulaesst - das Master-Passwort
 /// kennt er nicht und braucht er nicht.
 /// </summary>
-internal sealed class TelegramSync(GuardEngine engine) : BackgroundService
+internal sealed class TelegramSync(
+    GuardEngine engine,
+    TimeSpan? syncInterval = null,
+    TimeSpan? stateHeartbeat = null) : BackgroundService
 {
-    private static readonly TimeSpan SyncInterval = TimeSpan.FromSeconds(30);
+    /// <summary>
+    /// Takt des Abgleichs. Kurz gehalten, damit Befehle des Freundes schnell
+    /// ankommen - eine Runde ohne Neuigkeiten kostet den Worker nur einen
+    /// Lesevorgang und ist damit praktisch umsonst.
+    /// </summary>
+    private static readonly TimeSpan DefaultSyncInterval = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// So oft wird der Stand spaetestens zum Worker geschoben. Der Takt oben
+    /// bleibt bei einer halben Minute - er haelt die Reaktionszeit auf Befehle
+    /// des Freundes kurz und kostet den Worker nur Lesevorgaenge. Nur das
+    /// Schreiben ist knapp: Cloudflares kostenloses KV-Kontingent erlaubt 1000
+    /// Schreibvorgaenge pro Tag, ein Stand je Takt braeuchte 2880 und wuerde
+    /// nach gut acht Stunden Laufzeit abgewiesen.
+    /// </summary>
+    private static readonly TimeSpan DefaultStateHeartbeat = TimeSpan.FromMinutes(5);
+
+    // Beide Takte sind nur fuer Tests einstellbar; im Dienst gelten die Vorgaben.
+    private readonly TimeSpan _syncInterval = syncInterval ?? DefaultSyncInterval;
+    private readonly TimeSpan _stateHeartbeat = stateHeartbeat ?? DefaultStateHeartbeat;
+
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
     private static readonly HttpClient CloudflareHttp = new() { Timeout = TimeSpan.FromSeconds(60) };
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -46,7 +70,7 @@ internal sealed class TelegramSync(GuardEngine engine) : BackgroundService
     private static readonly Regex WebhookSecretPattern = new(@"^[A-Za-z0-9_\-]{16,128}$", RegexOptions.Compiled);
     private static readonly Regex AccountIdPattern = new(@"^[a-fA-F0-9]{32}$", RegexOptions.Compiled);
     private const string WorkerCompatibilityDate = "2024-11-01";
-    private const int CurrentWorkerVersion = 3;
+    private const int CurrentWorkerVersion = 4;
 
     /// <summary>
     /// Quittungen, die den Worker noch nicht erreicht haben. Bleiben liegen, bis
@@ -56,6 +80,26 @@ internal sealed class TelegramSync(GuardEngine engine) : BackgroundService
     private readonly List<RemoteResult> _unsentResults = [];
 
     private int _failures;
+
+    /// <summary>Wann der Stand zuletzt beim Worker ankam - Grundlage des Herzschlags.</summary>
+    private DateTimeOffset _lastStatePush = DateTimeOffset.MinValue;
+
+    /// <summary>
+    /// Fingerabdruck des zuletzt gemeldeten Standes. Weicht der aktuelle davon
+    /// ab, hat sich etwas geaendert, das der Worker nicht selbst ausrechnen kann.
+    /// </summary>
+    private string? _lastPushedFingerprint;
+
+    /// <summary>Zuletzt gemeldeter Stand - Ausgangspunkt der Vorhersagepruefung.</summary>
+    private double _lastPushedBalance;
+    private double _lastPushedEarned;
+
+    /// <summary>
+    /// So weit darf die Vorhersage des Workers danebenliegen, ohne dass
+    /// geschrieben wird. Grosszuegig gegenueber Taktjitter, aber weit unter
+    /// jedem echten Sprung - die kleinste Gabe ist eine Minute.
+    /// </summary>
+    private const double DriftToleranceSeconds = 30;
 
     /// <summary>Wann der Worker das naechste Mal auf eine alte Fassung geprueft wird.</summary>
     private DateTimeOffset _nextWorkerVersionCheck = DateTimeOffset.MinValue;
@@ -82,10 +126,13 @@ internal sealed class TelegramSync(GuardEngine engine) : BackgroundService
             while (!stoppingToken.IsCancellationRequested)
             {
                 // Weckruf durch die Engine (Guthaben geaendert) oder regulaerer Takt.
-                try { await engine.TelegramKick.WaitAsync(SyncInterval, stoppingToken); }
+                // Wer geweckt wurde, meldet den Stand ungefragt - der Weckruf kommt
+                // ja gerade deshalb, weil sich etwas geaendert hat.
+                bool kicked;
+                try { kicked = await engine.TelegramKick.WaitAsync(_syncInterval, stoppingToken); }
                 catch (OperationCanceledException) { break; }
 
-                try { await SyncOnceAsync(stoppingToken); }
+                try { await SyncOnceAsync(kicked, stoppingToken); }
                 catch (OperationCanceledException) { break; }
 
                 try { await MaybeUpdateWorkerAsync(stoppingToken); }
@@ -95,14 +142,15 @@ internal sealed class TelegramSync(GuardEngine engine) : BackgroundService
         finally
         {
             // Letzter Stand beim Herunterfahren - genau davon lebt die Abfrage bei
-            // ausgeschaltetem PC. Nur ein Versuch, mit knapper Frist.
+            // ausgeschaltetem PC. Nur ein Versuch, mit knapper Frist, und der
+            // Stand geht in jedem Fall mit: danach kommt keiner mehr.
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            try { await SyncOnceAsync(timeout.Token); }
+            try { await SyncOnceAsync(true, timeout.Token); }
             catch (Exception) { /* Best effort - das Herunterfahren wartet nicht. */ }
         }
     }
 
-    private async Task SyncOnceAsync(CancellationToken token)
+    private async Task SyncOnceAsync(bool force, CancellationToken token)
     {
         var settings = engine.TelegramConfig();
         if (!settings.Enabled ||
@@ -121,15 +169,43 @@ internal sealed class TelegramSync(GuardEngine engine) : BackgroundService
             return;
         }
 
+        // Ein aelterer Worker rechnet den Ablauf noch nicht selbst mit und haelt
+        // schon nach 90 Sekunden Stille den PC fuer aus. Ihm gegenueber bleibt es
+        // beim alten Verhalten, bis die Selbstaktualisierung durch ist - sonst
+        // behauptete /status stundenlang, der PC sei aus. Unbekannte Fassung zaehlt
+        // als alt.
+        var sparse = settings.WorkerVersion >= CurrentWorkerVersion;
+
         try
         {
             // Bis zu drei Runden: Stand melden und Befehle holen, Befehle anwenden,
             // Quittungen sofort nachreichen (statt erst im naechsten Takt).
             for (var round = 0; round < 3; round++)
             {
-                var body = new { state = engine.BuildTelegramSnapshot(), results = _unsentResults.ToArray() };
+                // Ab Runde eins hat gerade ein Fernbefehl gewirkt - der Sprung im
+                // Guthaben muss sofort hoch, sonst zeigt /status ihn erst beim
+                // naechsten Herzschlag.
+                var snapshot = engine.BuildTelegramSnapshot();
+                var now = DateTimeOffset.UtcNow;
+                var withState = force || round > 0 || !sparse || StateIsStale(snapshot, now);
+
+                var body = new
+                {
+                    state = withState ? snapshot : null,
+                    results = _unsentResults.ToArray(),
+                };
                 using var doc = await PostAsync($"{settings.WorkerUrl}/sync", secret, body, token);
                 _unsentResults.Clear();
+
+                // Erst nach der geglueckten Antwort: ein fehlgeschlagener Versuch
+                // darf den Herzschlag nicht als erledigt abhaken.
+                if (withState)
+                {
+                    _lastStatePush = now;
+                    _lastPushedFingerprint = Fingerprint(snapshot);
+                    _lastPushedBalance = snapshot.BalanceSeconds;
+                    _lastPushedEarned = snapshot.EarnedSeconds;
+                }
 
                 var commands = ParseCommands(doc);
                 if (commands.Count == 0) break;
@@ -155,6 +231,45 @@ internal sealed class TelegramSync(GuardEngine engine) : BackgroundService
                 Log.Write($"Telegram sync failing ({_failures}x): {Shorten(ex.Message, 200)}");
         }
     }
+
+    /// <summary>
+    /// Muss der Stand hoch? Nur wenn der Worker von sich aus etwas Falsches
+    /// anzeigen wuerde. Massstab ist also nicht "hat sich etwas geaendert",
+    /// sondern "liegt project() in worker.js daneben" - denn den Ablauf bei
+    /// laufender Uhr rechnet der Worker selbst mit.
+    /// </summary>
+    private bool StateIsStale(TelegramSnapshot snapshot, DateTimeOffset now)
+    {
+        if (_lastPushedFingerprint is null) return true;
+        if (Fingerprint(snapshot) != _lastPushedFingerprint) return true;
+
+        // Der Herzschlag haelt ausserdem die Online-Erkennung des Workers frisch.
+        if (now - _lastStatePush >= _stateHeartbeat) return true;
+
+        // Was der Worker gerade rechnen wuerde. Bei stehender Uhr ist das der
+        // zuletzt gemeldete Stand, bei laufender der um die verstrichene Zeit
+        // verminderte - genau wie in project(). Alles, was daneben liegt, ist ein
+        // Sprung, den niemand vorhersagen konnte: Nachlegen, Banane, Ruhezustand.
+        var elapsed = snapshot.Counting ? (now - _lastStatePush).TotalSeconds : 0;
+        return Drifted(snapshot.BalanceSeconds, _lastPushedBalance, elapsed) ||
+               Drifted(snapshot.EarnedSeconds, _lastPushedEarned, elapsed);
+
+        static bool Drifted(double actual, double lastPushed, double elapsed) =>
+            Math.Abs(actual - Math.Max(0, lastPushed - elapsed)) > DriftToleranceSeconds;
+    }
+
+    /// <summary>
+    /// Der Teil des Standes, den der Worker nicht herleiten kann. Guthaben und
+    /// Ersparnis fehlen bewusst - die prueft <see cref="StateIsStale"/> gegen die
+    /// Vorhersage, statt jede ablaufende Sekunde als Aenderung zu werten. Die
+    /// Evolutionsstufe fehlt ebenso: sie folgt aus Ersparnis und Tagesbudget.
+    /// </summary>
+    internal static string Fingerprint(TelegramSnapshot snapshot) => string.Join('|',
+        snapshot.DailyGrantMinutes.ToString(CultureInfo.InvariantCulture),
+        snapshot.CapMinutes.ToString(CultureInfo.InvariantCulture),
+        snapshot.Counting ? "1" : "0",
+        snapshot.LastAccrualDate ?? "-",
+        snapshot.TzOffsetMinutes.ToString(CultureInfo.InvariantCulture));
 
     // ------------------------------------------------- Anfragen aus dem Agent
 

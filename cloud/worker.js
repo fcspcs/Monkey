@@ -22,7 +22,7 @@
 
 const TOKEN_RE = /^\d{5,12}:[A-Za-z0-9_-]{30,64}$/;
 const HOOK_SECRET_RE = /^[A-Za-z0-9_-]{16,128}$/;
-const WORKER_VERSION = 3;
+const WORKER_VERSION = 4;
 
 // Nach oben offen ist gewollt - der Freund ist eine Vertrauensrolle. Die eine
 // Grenze hier ist Hygiene: sie haelt die Minutenzahl sicher im 32-Bit-Bereich
@@ -30,7 +30,19 @@ const WORKER_VERSION = 3;
 const MAX_ADD_MINUTES = 5_000_000;
 const MAX_QUEUE = 20;
 const MAX_CHATS_PER_ROLE = 4;
-const ONLINE_WINDOW_MS = 90_000; // letzter Sync juenger als das => PC gilt als an
+
+/**
+ * Letzter gemeldeter Stand juenger als das => PC gilt als an. Das Fenster ist
+ * das Doppelte des Herzschlags, mit dem der PC seinen Stand schiebt (fuenf
+ * Minuten, siehe TelegramSync.DefaultStateHeartbeat): Cloudflares kostenloses
+ * KV-Kontingent erlaubt 1000 Schreibvorgaenge pro Tag, ein Stand pro
+ * 30-Sekunden-Takt braeuchte 2880. Genauer wird die Anzeige davon nicht
+ * schlechter - das ablaufende Guthaben rechnet project() selbst mit.
+ */
+const ONLINE_WINDOW_MS = 12 * 60_000;
+
+/** So lange darf ein unabgeholter Befehl in der Warteschlange liegen. */
+const QUEUE_TTL_SECONDS = 14 * 24 * 3600;
 
 export default {
   async fetch(request, env) {
@@ -144,7 +156,17 @@ async function pairSetup(request, env) {
   return json({ ok: true });
 }
 
-/** Stand entgegennehmen, Quittungen zustellen, wartende Befehle zurueckgeben. */
+/**
+ * Stand entgegennehmen, Quittungen zustellen, wartende Befehle zurueckgeben.
+ *
+ * Der PC ruft das alle 30 Sekunden auf, damit Befehle des Freundes schnell
+ * ankommen. Deshalb darf eine Runde ohne Neuigkeiten nichts kosten ausser
+ * Lesevorgaenge: davon hat das kostenlose Kontingent 100 000 am Tag,
+ * geschrieben und aufgelistet werden duerfen aber nur je 1000. Geschrieben
+ * wird hier also nur, wenn der PC einen Stand mitschickt (er laesst ihn weg,
+ * solange sich nichts Wesentliches geaendert hat) oder eine Quittung die
+ * Warteschlange wirklich veraendert.
+ */
 async function sync(request, env) {
   const body = await readJson(request);
   if (!body || typeof body !== 'object') return json({ error: 'bad request' }, 400);
@@ -152,31 +174,68 @@ async function sync(request, env) {
   if (body.state && typeof body.state === 'object')
     await env.KV.put('state', JSON.stringify({ ...body.state, receivedAt: Date.now() }));
 
-  const config = await env.KV.get('config', 'json');
+  let queue = await readQueue(env);
 
   const results = Array.isArray(body.results) ? body.results.slice(0, MAX_QUEUE) : [];
+  const done = new Set();
   for (const result of results) {
     if (!result || typeof result.id !== 'string') continue;
-    const key = `cmd:${result.id}`;
-    const command = await env.KV.get(key, 'json');
-    if (!command) continue;
+    const command = queue.find((entry) => entry.id === result.id);
+    if (!command || done.has(command.id)) continue;
 
-    await env.KV.delete(key);
-    if (config?.friendTokenHash && command.chatId)
+    done.add(command.id);
+    if (command.chatId)
       await tg(env.FRIEND_BOT_TOKEN, 'sendMessage', {
         chat_id: command.chatId,
         text: `${result.ok ? '✅' : '⚠️'} ${String(result.message || '').slice(0, 300)}`,
       });
   }
 
-  const commands = [];
+  if (done.size > 0) {
+    queue = queue.filter((entry) => !done.has(entry.id));
+    await writeQueue(env, queue);
+  }
+
+  return json({
+    commands: queue
+      .slice(0, MAX_QUEUE)
+      .map((entry) => ({ id: entry.id, type: entry.type, minutes: entry.minutes || 0 })),
+  });
+}
+
+/**
+ * Die ganze Warteschlange liegt unter einem einzigen Schluessel. Frueher hatte
+ * jeder Befehl seinen eigenen (cmd:<id>), was pro Abgleich ein KV.list
+ * kostete - bei einem 30-Sekunden-Takt fast das Dreifache des Tageskontingents.
+ * So ist es ein Lesevorgang, und der ist praktisch umsonst.
+ */
+async function readQueue(env) {
+  const stored = await env.KV.get('queue', 'json');
+
+  // Kein Schluessel? Dann entweder frisch oder gerade von Worker v3 aktualisiert.
+  // Die einmalige Uebernahme kostet ein list; danach existiert 'queue' immer.
+  const queue = Array.isArray(stored) ? stored : await adoptLegacyQueue(env);
+
+  const oldest = Date.now() - QUEUE_TTL_SECONDS * 1000;
+  return queue.filter((entry) => entry && typeof entry.id === 'string' && (entry.createdAt || 0) > oldest);
+}
+
+async function writeQueue(env, queue) {
+  await env.KV.put('queue', JSON.stringify(queue), { expirationTtl: QUEUE_TTL_SECONDS });
+}
+
+/** Uebernimmt die cmd:-Schluessel von Worker v3, damit kein Befehl verfaellt. */
+async function adoptLegacyQueue(env) {
+  const queue = [];
   const list = await env.KV.list({ prefix: 'cmd:' });
   for (const key of list.keys.slice(0, MAX_QUEUE)) {
     const command = await env.KV.get(key.name, 'json');
-    if (command) commands.push({ id: command.id, type: command.type, minutes: command.minutes || 0 });
+    if (command) queue.push(command);
+    await env.KV.delete(key.name);
   }
 
-  return json({ commands });
+  await writeQueue(env, queue);
+  return queue;
 }
 
 /** Webhooks abmelden und KV leeren; Secret-Bindings loescht nur die Cloudflare-API. */
@@ -187,6 +246,9 @@ async function reset(env) {
   await env.KV.delete('config');
   await env.KV.delete('state');
   await env.KV.delete('pair');
+  await env.KV.delete('queue');
+
+  // Hinterlassenschaft von Worker v3 - nach einem Update kann sie noch liegen.
   const list = await env.KV.list({ prefix: 'cmd:' });
   for (const key of list.keys) await env.KV.delete(key.name);
 
@@ -298,18 +360,20 @@ async function handleFriendCommand(env, state, command, arg, chatId, reply) {
     queued = { type: 'add', minutes, action: `Adding ${minutes} min` };
   }
 
-  const list = await env.KV.list({ prefix: 'cmd:' });
-  if (list.keys.length >= MAX_QUEUE) {
+  const queue = await readQueue(env);
+  if (queue.length >= MAX_QUEUE) {
     await reply("The command queue is full — the PC hasn't picked anything up in a long time.");
     return;
   }
 
-  const id = crypto.randomUUID();
-  await env.KV.put(
-    `cmd:${id}`,
-    JSON.stringify({ id, type: queued.type, minutes: queued.minutes, chatId, createdAt: Date.now() }),
-    { expirationTtl: 14 * 24 * 3600 },
-  );
+  queue.push({
+    id: crypto.randomUUID(),
+    type: queued.type,
+    minutes: queued.minutes,
+    chatId,
+    createdAt: Date.now(),
+  });
+  await writeQueue(env, queue);
 
   const online = Date.now() - (state.receivedAt || 0) < ONLINE_WINDOW_MS;
   await reply(
@@ -322,15 +386,28 @@ async function handleFriendCommand(env, state, command, arg, chatId, reply) {
 // ------------------------------------------------------------- Status math
 
 /**
- * Der Stand bei ausgeschaltetem PC ist vollstaendig vorhersagbar: pro lokalem
- * Kalendertag kommt die Tagesgutschrift dazu, bis zum Deckel. Das hier ist die
- * JS-Fassung von Accrue/Grant aus der GuardEngine.
+ * Der Stand zwischen zwei Meldungen ist vollstaendig vorhersagbar: laeuft die
+ * Uhr, so laeuft sie weiter; pro lokalem Kalendertag kommt die Tagesgutschrift
+ * dazu, bis zum Deckel. Das hier ist die JS-Fassung von Accrue/Grant und dem
+ * Verbrauchsschritt aus der GuardEngine.
+ *
+ * Genau deshalb darf der PC seinen Stand sparsam melden: eine fuenf Minuten
+ * alte Meldung ist hier so genau wie eine fuenf Sekunden alte.
  */
 function project(state, nowMs) {
   const grant = (state.dailyGrantMinutes || 0) * 60;
   const cap = (state.capMinutes || 0) * 60;
   let balance = Math.max(0, state.balanceSeconds || 0);
   let earned = Math.max(0, state.earnedSeconds || 0);
+
+  // Sass beim letzten Bericht jemand davor, laeuft die Zeit seither ab - so wie
+  // es die Engine tut, Ersparnis inbegriffen. Gedeckelt auf das Online-Fenster:
+  // faellt der PC aus, verbraucht danach niemand mehr Zeit.
+  if (state.counting) {
+    const spent = Math.min(Math.max(0, nowMs - (state.receivedAt || nowMs)), ONLINE_WINDOW_MS) / 1000;
+    balance = Math.max(0, balance - spent);
+    earned = Math.max(0, earned - spent);
+  }
 
   const days = daysSince(state.lastAccrualDate, state.tzOffsetMinutes || 0, nowMs);
   let credited = 0;

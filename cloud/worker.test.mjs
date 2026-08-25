@@ -18,24 +18,27 @@ const worker = (await import(moduleUrl)).default;
 
 /** KV-Namespace-Fake mit den vom Worker genutzten Faehigkeiten inkl. TTL. */
 class MemoryKv {
-  constructor() { this.map = new Map(); }
+  constructor() { this.map = new Map(); this.ops = { get: 0, put: 0, delete: 0, list: 0 }; }
 
   async get(key, type) {
+    this.ops.get++;
     const entry = this.map.get(key);
     if (!entry || (entry.expiresAt && Date.now() > entry.expiresAt)) return null;
     return type === 'json' ? JSON.parse(entry.value) : entry.value;
   }
 
   async put(key, value, { expirationTtl } = {}) {
+    this.ops.put++;
     this.map.set(key, {
       value,
       expiresAt: expirationTtl ? Date.now() + expirationTtl * 1000 : null,
     });
   }
 
-  async delete(key) { this.map.delete(key); }
+  async delete(key) { this.ops.delete++; this.map.delete(key); }
 
   async list({ prefix = '' } = {}) {
+    this.ops.list++;
     const keys = [...this.map.entries()]
       .filter(([key, entry]) => key.startsWith(prefix) && !(entry.expiresAt && Date.now() > entry.expiresAt))
       .map(([name]) => ({ name }))
@@ -168,13 +171,13 @@ describe('routing and authentication', () => {
     assert.match(await response.text(), /running/);
   });
 
-  test('/info requires the sync secret and names version 3', async () => {
+  test('/info requires the sync secret and names version 4', async () => {
     const env = makeEnv();
     assert.equal((await send(env, '/info', { method: 'GET', secret: 'wrong' })).status, 401);
 
     const response = await send(env, '/info', { method: 'GET' });
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { version: 3, secretBindings: true });
+    assert.deepEqual(await response.json(), { version: 4, secretBindings: true });
   });
 
   test('PC endpoints reject a wrong or missing bearer', async () => {
@@ -426,6 +429,34 @@ describe('status projection', () => {
     assert.doesNotMatch(lastReply(), /Commands:/); // Der Monkey-Bot kann nur /status.
   });
 
+  test('a running clock keeps ticking between two reports', async () => {
+    const env = await provisioned();
+    await paired(env, 'monkey', 111);
+    await reportState(env, { counting: true }); // 10 min Guthaben
+
+    now += 4 * 60_000;
+    await webhook(env, 'monkey', update(111, '/status'));
+
+    // Der PC meldet seinen Stand nur alle fuenf Minuten. Die Zeit dazwischen ist
+    // gerechnet, nicht geraten - sonst stuende hier noch die alte Zahl.
+    assert.match(lastReply(), /Balance: 6 min/);
+    assert.match(lastReply(), /clock is running/);
+  });
+
+  test('a PC that vanishes mid-session stops consuming time', async () => {
+    const env = await provisioned();
+    await paired(env, 'monkey', 111);
+    await reportState(env, { balanceSeconds: 3600, earnedSeconds: 3600, counting: true });
+
+    now += 2 * 3600_000; // Stecker gezogen, niemand sitzt mehr davor
+    await webhook(env, 'monkey', update(111, '/status'));
+
+    // Hoechstens ein Online-Fenster wird noch abgezogen (60 - 12 = 48), danach
+    // ruht die Uhr. Ohne diesen Deckel waere das Guthaben laengst bei null.
+    assert.match(lastReply(), /Balance: 48 min/);
+    assert.match(lastReply(), /PC: off/);
+  });
+
   test('days offline are projected exactly like the engine would credit them', async () => {
     const env = await provisioned();
     await paired(env, 'friend', 222);
@@ -493,12 +524,7 @@ describe('friend commands', () => {
     return env;
   }
 
-  const queuedCommands = async (env) => {
-    const { keys } = await env.KV.list({ prefix: 'cmd:' });
-    const commands = [];
-    for (const key of keys) commands.push(await env.KV.get(key.name, 'json'));
-    return commands;
-  };
+  const queuedCommands = async (env) => (await env.KV.get('queue', 'json')) ?? [];
 
   test('before the first report nothing can be queued', async () => {
     const env = await provisioned();
@@ -536,7 +562,7 @@ describe('friend commands', () => {
     await webhook(env, 'friend', update(222, '/add 30'));
     assert.match(lastReply(), /within about half a minute/);
 
-    now += 100_000; // PC seit gut anderthalb Minuten still -> gilt als aus
+    now += 13 * 60_000; // laenger still als das Online-Fenster -> gilt als aus
     await webhook(env, 'friend', update(222, '/add 15'));
     assert.match(lastReply(), /as soon as it next starts/);
 
@@ -576,8 +602,8 @@ describe('friend commands', () => {
 
   test('a full queue refuses further commands', async () => {
     const env = await friendReady();
-    for (let i = 0; i < 20; i++)
-      await env.KV.put(`cmd:${i}`, JSON.stringify({ id: `${i}`, type: 'add', minutes: 1, chatId: 222 }));
+    await env.KV.put('queue', JSON.stringify(Array.from({ length: 20 }, (_, i) =>
+      ({ id: `${i}`, type: 'add', minutes: 1, chatId: 222, createdAt: Date.now() }))));
 
     await webhook(env, 'friend', update(222, '/add 30'));
 
@@ -606,8 +632,8 @@ describe('sync', () => {
     await paired(env, 'friend', 222);
     await reportState(env);
     await webhook(env, 'friend', update(222, '/add 30'));
-    const [command] = (await env.KV.list({ prefix: 'cmd:' })).keys;
-    const id = command.name.slice('cmd:'.length);
+    const [command] = await env.KV.get('queue', 'json');
+    const id = command.id;
     telegramCalls = [];
 
     const response = await send(env, '/sync', {
@@ -616,7 +642,7 @@ describe('sync', () => {
 
     assert.equal(response.status, 200);
     assert.deepEqual((await response.json()).commands, []);
-    assert.equal((await env.KV.list({ prefix: 'cmd:' })).keys.length, 0);
+    assert.deepEqual(await env.KV.get('queue', 'json'), []);
     assert.equal(replies().length, 1);
     assert.equal(replies()[0].chat_id, 222);
     assert.match(replies()[0].text, /✅ Added 30 min\./);
@@ -639,6 +665,35 @@ describe('sync', () => {
     assert.equal(commands.find((c) => c.minutes === 60).type, 'add');
   });
 
+  test('an idle round costs neither a write nor a listing', async () => {
+    const env = await provisioned();
+    await paired(env, 'friend', 222);
+    await reportState(env);
+
+    // Der PC pollt weiter alle 30 Sekunden, laesst den Stand aber weg, solange
+    // sich nichts Wesentliches geaendert hat. Genau diese Runde muss gratis
+    // sein: das kostenlose KV-Kontingent kennt 100 000 Lesevorgaenge am Tag,
+    // aber nur je 1000 Schreib- und Listenvorgaenge - ein 30-Sekunden-Takt
+    // braucht 2880.
+    env.KV.ops = { get: 0, put: 0, delete: 0, list: 0 };
+    for (let i = 0; i < 10; i++) assert.equal((await send(env, '/sync', { body: {} })).status, 200);
+
+    assert.deepEqual(env.KV.ops, { get: 10, put: 0, delete: 0, list: 0 });
+  });
+
+  test('commands queued by worker v3 survive the update', async () => {
+    const env = await provisioned();
+    await paired(env, 'friend', 222);
+    await env.KV.put('cmd:old', JSON.stringify(
+      { id: 'old', type: 'add', minutes: 45, chatId: 222, createdAt: Date.now() }));
+
+    const response = await send(env, '/sync', { body: {} });
+
+    assert.deepEqual((await response.json()).commands, [{ id: 'old', type: 'add', minutes: 45 }]);
+    assert.equal(await env.KV.get('cmd:old'), null); // umgezogen, nicht verdoppelt
+    assert.equal((await env.KV.get('queue', 'json')).length, 1);
+  });
+
   test('unknown receipt ids are ignored quietly', async () => {
     const env = await provisioned();
 
@@ -656,7 +711,8 @@ describe('reset', () => {
     const env = await provisioned();
     await reportState(env);
     await send(env, '/pair', { body: { role: 'friend', code: '123456' } });
-    await env.KV.put('cmd:x', JSON.stringify({ id: 'x', type: 'add', minutes: 1 }));
+    await env.KV.put('queue', JSON.stringify([{ id: 'x', type: 'add', minutes: 1 }]));
+    await env.KV.put('cmd:legacy', JSON.stringify({ id: 'legacy', type: 'add', minutes: 1 }));
     telegramCalls = [];
 
     const response = await send(env, '/reset');
@@ -667,7 +723,7 @@ describe('reset', () => {
     assert.ok(hookCalls.some((c) => c.url.includes(`/bot${MONKEY_TOKEN}/`)));
     assert.ok(hookCalls.some((c) => c.url.includes(`/bot${FRIEND_TOKEN}/`)));
 
-    for (const key of ['config', 'state', 'pair', 'cmd:x'])
+    for (const key of ['config', 'state', 'pair', 'queue', 'cmd:legacy'])
       assert.equal(await env.KV.get(key), null);
   });
 });

@@ -102,13 +102,28 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr WindowFromPoint(POINT point);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetAncestor(IntPtr hWnd, uint gaFlags);
+
+    [DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int nIndex);
+
+    private const uint GA_ROOT = 2;
+    private const int SM_CXSCREEN = 0;
+    private const int SM_CYSCREEN = 1;
+
     /// <summary>
-    /// Laeuft gerade ein Bildschirmschoner? Drei Blickwinkel, weil keiner allein
-    /// alle Faelle trifft: die offizielle Abfrage; der Desktop "Screen-saver",
-    /// auf dem Windows den Schoner laufen laesst; und zuletzt das
-    /// Vordergrundfenster. Letzteres faengt den von Hand gestarteten Schoner
-    /// (Verknuepfung oder Hotkey auf eine .scr-Datei) - fuer Windows ist der nur
-    /// ein normales Vollbildprogramm, das System-Flag bleibt dann aus.
+    /// Laeuft gerade ein Bildschirmschoner? Mehrere Blickwinkel, weil keiner
+    /// allein alle Faelle trifft: die offizielle Abfrage; der Desktop
+    /// "Screen-saver", auf dem Windows den Schoner laufen laesst; und zuletzt
+    /// die Fenster selbst - das im Vordergrund und das, was mitten auf dem
+    /// Bildschirm zu sehen ist. Die beiden letzten fangen den von Hand
+    /// gestarteten Schoner (Verknuepfung oder Hotkey auf eine .scr-Datei) - fuer
+    /// Windows ist der nur ein normales Vollbildprogramm, das System-Flag bleibt
+    /// dann aus.
     ///
     /// Jeder Blickwinkel muss den laufenden Schoner belegen, nicht bloss seine
     /// Spuren: Ein falsches Ja haelt die Uhr an, und eine angehaltene Uhr ist
@@ -120,7 +135,9 @@ internal static class NativeMethods
         if (SystemParametersInfo(SPI_GETSCREENSAVERRUNNING, 0, ref running, 0) && running != 0)
             return true;
 
-        return InputDesktopIsScreensaver() || ForegroundWindowIsScreensaver();
+        return InputDesktopIsScreensaver()
+               || ForegroundWindowIsScreensaver()
+               || ScreenCenterIsScreensaver();
     }
 
     /// <summary>
@@ -169,11 +186,39 @@ internal static class NativeMethods
             : null;
     }
 
-    private static bool ForegroundWindowIsScreensaver()
+    private static bool ForegroundWindowIsScreensaver() => BelongsToScreensaver(GetForegroundWindow());
+
+    /// <summary>
+    /// Bedeckt ein Schoner gerade den Bildschirm - ob er den Fokus hat oder nicht?
+    ///
+    /// Auf das Vordergrundfenster allein ist kein Verlass: Windows gibt einem
+    /// frisch gestarteten Programm den Fokus nicht, solange jemand eben noch
+    /// getippt oder geklickt hat (Fokussperre, 200 s nach der letzten Eingabe).
+    /// Genau dann startet man den Schoner von Hand - der liegt als oberstes
+    /// Vollbildfenster ueber allem, vorn bleibt aber der Editor, und die Uhr
+    /// lief die ganze Pause weiter. Was mitten auf dem Hauptbildschirm zu sehen
+    /// ist, sagt es dagegen immer.
+    ///
+    /// Gefragt wird nach dem Hauptfenster, nicht nach dem Fenster unter dem
+    /// Punkt: Die Vorschau in den Schonereinstellungen laeuft als Kindfenster im
+    /// Einstellungsdialog - das ist kein laufender Schoner.
+    /// </summary>
+    private static bool ScreenCenterIsScreensaver()
+    {
+        var center = new POINT
+        {
+            X = GetSystemMetrics(SM_CXSCREEN) / 2,
+            Y = GetSystemMetrics(SM_CYSCREEN) / 2,
+        };
+
+        var window = WindowFromPoint(center);
+        return window != IntPtr.Zero && BelongsToScreensaver(GetAncestor(window, GA_ROOT));
+    }
+
+    private static bool BelongsToScreensaver(IntPtr window)
     {
         try
         {
-            var window = GetForegroundWindow();
             if (window == IntPtr.Zero) return false;
 
             GetWindowThreadProcessId(window, out var pid);

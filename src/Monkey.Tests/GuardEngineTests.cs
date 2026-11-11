@@ -512,6 +512,172 @@ public sealed class GuardEngineTests
         Assert.Equal(200_000, engine.Status().BalanceSeconds, 1);
     }
 
+    // ------------------------------------------------------ Freier Tag
+
+    private static DateOnly Today => DateOnly.FromDateTime(DateTime.Now);
+
+    [Fact]
+    public void FreeDay_StopsTheClockWithoutPassword()
+    {
+        var engine = TestEnv.Engine(s => s.BalanceSeconds = 300, TestEnv.User());
+
+        var response = engine.Handle(RequestType.FreeDay, mutate: r => r.SessionId = 7);
+        Assert.True(response.Ok, response.Message);
+
+        Thread.Sleep(150);
+        engine.Tick(Tick);
+
+        var status = engine.Status(7);
+        Assert.Equal(300, status.BalanceSeconds, 3);
+        Assert.False(status.Counting);
+        Assert.True(status.FreeDayActive);
+        Assert.False(status.FreeDayAvailable);
+        Assert.Equal(Today, status.FreeDayTakenThisWeek);
+    }
+
+    [Fact]
+    public void FreeDay_IsSavedAndShowsInTheHistory()
+    {
+        var engine = TestEnv.Engine(s => s.BalanceSeconds = 300, TestEnv.User());
+
+        engine.Handle(RequestType.FreeDay);
+
+        Assert.Equal(Today, TestEnv.PersistedState().FreeDayDate);
+        var history = engine.Handle(RequestType.History).History!;
+        Assert.True(history.Single(d => d.Date == Today).FreeDay);
+    }
+
+    [Fact]
+    public void FreeDay_SavesFromAnEmptyBalance()
+    {
+        // Mit leerem Konto ware die Abmeldung faellig - der freie Tag haelt sie auf.
+        var engine = TestEnv.Engine(s => s.BalanceSeconds = 0, TestEnv.User());
+        engine.Tick(Tick);
+        Assert.NotNull(engine.Status(7).SecondsUntilLogoff);
+
+        engine.Handle(RequestType.FreeDay);
+        engine.Tick(Tick);
+
+        Assert.Null(engine.Status(7).SecondsUntilLogoff);
+    }
+
+    [Fact]
+    public void FreeDay_OnlyOncePerWeek()
+    {
+        // Frueher in derselben Woche schon genommen: heute nicht noch einmal.
+        // Ist heute Montag, gibt es kein frueheres Datum in der Woche - dann
+        // pruefen wir den Wochenanfang selbst ueber den Fall "heute schon".
+        var weekStart = GuardEngine.WeekStart(Today);
+        if (weekStart == Today) return;
+
+        var engine = TestEnv.Engine(s =>
+        {
+            s.BalanceSeconds = 300;
+            s.FreeDayDate = weekStart;
+        }, TestEnv.User());
+
+        var response = engine.Handle(RequestType.FreeDay);
+
+        Assert.False(response.Ok);
+        Assert.Contains("already taken", response.Message);
+        Assert.False(engine.Status().FreeDayActive);
+        Assert.False(engine.Status().FreeDayAvailable);
+
+        Thread.Sleep(150);
+        engine.Tick(Tick);
+        Assert.True(engine.Status(7).BalanceSeconds < 300);
+    }
+
+    [Fact]
+    public void FreeDay_LastWeeksDoesNotCount()
+    {
+        var engine = TestEnv.Engine(s => s.FreeDayDate = GuardEngine.WeekStart(Today).AddDays(-1));
+
+        Assert.True(engine.Status().FreeDayAvailable);
+        Assert.Null(engine.Status().FreeDayTakenThisWeek);
+        Assert.True(engine.Handle(RequestType.FreeDay).Ok);
+    }
+
+    [Fact]
+    public void FreeDay_EndsWithTheDay()
+    {
+        // Gestern frei genommen (in derselben Woche oder nicht): heute laeuft
+        // die Uhr wieder.
+        var engine = TestEnv.Engine(s =>
+        {
+            s.BalanceSeconds = 300;
+            s.FreeDayDate = Today.AddDays(-1);
+        }, TestEnv.User());
+
+        Thread.Sleep(150);
+        engine.Tick(Tick);
+
+        Assert.False(engine.Status(7).FreeDayActive);
+        Assert.True(engine.Status(7).BalanceSeconds < 300);
+    }
+
+    [Fact]
+    public void FreeDay_TakingItTwiceTheSameDayIsHarmless()
+    {
+        var engine = TestEnv.Engine(s => s.BalanceSeconds = 300);
+
+        Assert.True(engine.Handle(RequestType.FreeDay).Ok);
+        var again = engine.Handle(RequestType.FreeDay);
+
+        Assert.True(again.Ok);
+        Assert.Contains("already is your free day", again.Message);
+    }
+
+    [Fact]
+    public void FreeDay_SwitchedOff_IsRefused()
+    {
+        var engine = TestEnv.Engine(s =>
+        {
+            s.BalanceSeconds = 300;
+            s.Config.WeeklyFreeDay = false;
+        });
+
+        var response = engine.Handle(RequestType.FreeDay);
+
+        Assert.False(response.Ok);
+        Assert.False(engine.Status().FreeDayAvailable);
+        Assert.Null(TestEnv.PersistedState().FreeDayDate);
+    }
+
+    [Fact]
+    public void FreeDay_SettingNeedsThePassword()
+    {
+        var engine = TestEnv.Engine();
+        var config = engine.Status().Config!;
+        config.WeeklyFreeDay = false;
+
+        Assert.False(engine.Handle(RequestType.SetConfig, "wrong", r => r.Config = config).Ok);
+        Assert.True(engine.Status().Config!.WeeklyFreeDay);
+
+        Assert.True(engine.Handle(RequestType.SetConfig, TestEnv.Password, r => r.Config = config).Ok);
+        Assert.False(engine.Status().Config!.WeeklyFreeDay);
+    }
+
+    [Theory]
+    [InlineData("2026-11-09", "2026-11-09")] // Montag
+    [InlineData("2026-11-11", "2026-11-09")] // Mittwoch
+    [InlineData("2026-11-15", "2026-11-09")] // Sonntag
+    [InlineData("2026-11-16", "2026-11-16")] // naechster Montag
+    public void WeekStart_IsMonday(string day, string monday) =>
+        Assert.Equal(DateOnly.Parse(monday), GuardEngine.WeekStart(DateOnly.Parse(day)));
+
+    [Fact]
+    public void OldStateFile_HasTheFreeDaySwitchedOn()
+    {
+        // Zustandsdateien von vor dem Feature kennen das Feld nicht.
+        var node = System.Text.Json.Nodes.JsonNode.Parse(new GuardState().ToJson())!;
+        Assert.True(node["Config"]!.AsObject().Remove("WeeklyFreeDay"));
+        var json = node.ToJsonString();
+        Assert.DoesNotContain("WeeklyFreeDay", json);
+
+        Assert.True(GuardState.FromJson(json)!.Config.WeeklyFreeDay);
+    }
+
     [Fact]
     public void RemotePauseAndResume_AreRefusedWithAnExplanation()
     {

@@ -129,8 +129,21 @@
 
                     <!-- Alles hier bricht bewusst mit der Regel: Zeit dazugeben,
                          abziehen, die Uhr anhalten. Deshalb verlangt jede Taste
-                         auf dieser Seite das Master-Passwort. -->
+                         auf dieser Seite das Master-Passwort - mit einer
+                         Ausnahme: der woechentliche freie Tag. Den darf man sich
+                         selbst nehmen, die Grenze ist die Woche. -->
                     <StackPanel x:Name="PageExceptions" Visibility="Collapsed">
+
+                        <GroupBox x:Name="FreeDayGroup" Header="Weekly free day">
+                            <StackPanel>
+                                <Button x:Name="FreeDayButton" Content="Take today off"
+                                        Style="{StaticResource PrimaryButton}"
+                                        Click="OnTakeFreeDay" HorizontalAlignment="Left"
+                                        MinWidth="160" MinHeight="40"/>
+                                <TextBlock x:Name="FreeDayText" Style="{StaticResource Hint}"
+                                           VerticalAlignment="Top" Margin="0,12,0,0"/>
+                            </StackPanel>
+                        </GroupBox>
 
                         <GroupBox Header="Add or take time">
                             <StackPanel>
@@ -443,6 +456,9 @@
                                 <Border Style="{StaticResource RowRule}"/>
                                 <CheckBox x:Name="AutoUpdateBox" Style="{StaticResource Switch}"
                                           Content="Install new releases automatically (signed updates only)"/>
+                                <Border Style="{StaticResource RowRule}"/>
+                                <CheckBox x:Name="WeeklyFreeDayBox" Style="{StaticResource Switch}"
+                                          Content="Allow one free day per week, taken without the master password"/>
                             </StackPanel>
                         </GroupBox>
 

@@ -48,6 +48,15 @@ public sealed class GuardConfig
     /// </summary>
     public bool AutoUpdate { get; set; } = true;
 
+    /// <summary>
+    /// Einmal pro Kalenderwoche (Montag bis Sonntag) darf der Nutzer selbst einen
+    /// freien Tag nehmen - ohne Master-Passwort. Ab dann steht die Uhr bis
+    /// Mitternacht still, das Guthaben bleibt unberuehrt. Ohne Passwort, weil
+    /// genau das den Joker ausmacht: Wer das Passwort hat, kann ohnehin Zeit
+    /// nachlegen. Die Grenze ist die Woche, nicht das Passwort.
+    /// </summary>
+    public bool WeeklyFreeDay { get; set; } = true;
+
     // Alle Felder sind Werttypen - eine flache Kopie genuegt.
     public GuardConfig Clone() => (GuardConfig)MemberwiseClone();
 }
@@ -116,6 +125,9 @@ public sealed class DayStat
 
     /// <summary>Davon erspart, also aus Tagesgutschriften statt nachgelegt.</summary>
     public double EarnedEndSeconds { get; set; }
+
+    /// <summary>An diesem Tag wurde der woechentliche freie Tag genommen.</summary>
+    public bool FreeDay { get; set; }
 }
 
 public sealed class GuardState
@@ -161,6 +173,13 @@ public sealed class GuardState
     public int EmptyGraceRuns { get; set; }
 
     public DateTimeOffset LastSaved { get; set; }
+
+    /// <summary>
+    /// Tag, an dem zuletzt der woechentliche freie Tag genommen wurde. Steht er
+    /// in der laufenden Kalenderwoche, ist der Joker fuer diese Woche verbraucht;
+    /// ist er heute, steht die Uhr still.
+    /// </summary>
+    public DateOnly? FreeDayDate { get; set; }
 
     /// <summary>
     /// Rueckschau je Kalendertag, aelteste zuerst. Auf <see cref="HistoryDays"/>

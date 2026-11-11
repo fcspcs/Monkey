@@ -238,9 +238,13 @@ public partial class MasterWindow : ChromeWindow
         // die Zahl.
         BalanceText.Text = FormatSpan(status.BalanceSeconds);
 
-        StateText.Text = status.Counting
-            ? $"The clock is running. {FormatSpan(status.SessionElapsedSeconds)} since sign-in."
-            : "The clock is stopped right now.";
+        StateText.Text = status.FreeDayActive
+            ? "Free day - the clock stands still until midnight."
+            : status.Counting
+                ? $"The clock is running. {FormatSpan(status.SessionElapsedSeconds)} since sign-in."
+                : "The clock is stopped right now.";
+
+        ShowFreeDayState(status);
 
         if (status.ClockTamperEvents > 0)
             StateText.Text += $"  ({status.ClockTamperEvents} clock jump(s) detected)";
@@ -263,6 +267,7 @@ public partial class MasterWindow : ChromeWindow
             PauseOnLock.IsChecked = config.PauseOnLock;
             PauseOnScreensaver.IsChecked = config.PauseOnScreensaver;
             AutoUpdateBox.IsChecked = config.AutoUpdate;
+            WeeklyFreeDayBox.IsChecked = config.WeeklyFreeDay;
         }
 
         VersionText.Text = status.ServiceVersion is { } version
@@ -557,7 +562,7 @@ public partial class MasterWindow : ChromeWindow
 
                 var net = day.AddedMinutes - day.RemovedMinutes;
                 rows.Add(new StatRow(
-                    LongDate(date),
+                    day.FreeDay ? $"{LongDate(date)} · free" : LongDate(date),
                     Minutes(used),
                     Math.Abs(net) < 0.5 ? "—" : (net > 0 ? "+" : "−") + Minutes(Math.Abs(net)),
                     Minutes(day.BalanceEndMinutes)));
@@ -829,8 +834,55 @@ public partial class MasterWindow : ChromeWindow
                 PauseOnLock = PauseOnLock.IsChecked == true,
                 PauseOnScreensaver = PauseOnScreensaver.IsChecked == true,
                 AutoUpdate = AutoUpdateBox.IsChecked == true,
+                WeeklyFreeDay = WeeklyFreeDayBox.IsChecked == true,
             },
         });
+    }
+
+    private const string FreeDayExplanation =
+        "Once a week (Monday to Sunday) you can stop the clock until midnight - no master password " +
+        "needed. Your balance stays as it is. It can't be undone.";
+
+    private void ShowFreeDayState(StatusDto status)
+    {
+        FreeDayButton.IsEnabled = status.FreeDayAvailable;
+
+        if (status.FreeDayActive)
+        {
+            FreeDayButton.Content = "Today is your free day";
+            FreeDayText.Text = "The clock stands still until midnight. The next free day is available from Monday.";
+        }
+        else if (status.FreeDayTakenThisWeek is { } taken)
+        {
+            FreeDayButton.Content = "Used this week";
+            FreeDayText.Text =
+                $"This week's free day was {taken.ToDateTime(TimeOnly.MinValue).ToString("dddd", CultureInfo.InvariantCulture)}. " +
+                "The next one is available from Monday.";
+        }
+        else if (status.Config?.WeeklyFreeDay == false)
+        {
+            FreeDayButton.Content = "Take today off";
+            FreeDayText.Text = "Switched off in the settings.";
+        }
+        else
+        {
+            FreeDayButton.Content = "Take today off";
+            FreeDayText.Text = FreeDayExplanation;
+        }
+    }
+
+    private async void OnTakeFreeDay(object sender, RoutedEventArgs e)
+    {
+        // Kein Passwort - die Grenze zieht der Dienst: einmal pro Woche.
+        SetBusy(true);
+        var response = await App.TakeFreeDayAsync(this);
+        SetBusy(false);
+
+        // Nein geklickt: nichts geschehen, nichts zu melden.
+        if (response is null) return;
+
+        Show(response.Ok, response.Message ?? (response.Ok ? "Done." : "Rejected."));
+        await RefreshAsync();
     }
 
     /// <summary>

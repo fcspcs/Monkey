@@ -14,6 +14,13 @@ public static class RequestType
     /// </summary>
     public const string History = "history";
     public const string AddTime = "addtime";
+
+    /// <summary>
+    /// Den woechentlichen freien Tag nehmen. Bewusst ohne Passwort - siehe
+    /// <see cref="GuardConfig.WeeklyFreeDay"/>. Der Dienst prueft, ob er in
+    /// dieser Woche noch zu haben ist.
+    /// </summary>
+    public const string FreeDay = "freeday";
     public const string SetConfig = "setconfig";
     public const string ChangePassword = "changepassword";
 
@@ -109,6 +116,16 @@ public sealed class StatusDto
     public int DailyGrantMinutes { get; set; }
     public int CapMinutes { get; set; }
     public int ClockTamperEvents { get; set; }
+
+    /// <summary>Heute ist der freie Tag - die Uhr steht bis Mitternacht.</summary>
+    public bool FreeDayActive { get; set; }
+
+    /// <summary>Der freie Tag dieser Woche ist noch zu haben (und eingeschaltet).</summary>
+    public bool FreeDayAvailable { get; set; }
+
+    /// <summary>Wann der freie Tag dieser Woche genommen wurde, sonst null.</summary>
+    public DateOnly? FreeDayTakenThisWeek { get; set; }
+
     public bool PasswordConfigured { get; set; }
     public GuardConfig? Config { get; set; }
 
@@ -160,6 +177,7 @@ public sealed class DayStatDto
     public double RemovedMinutes { get; set; }
     public double BalanceEndMinutes { get; set; }
     public double EarnedEndMinutes { get; set; }
+    public bool FreeDay { get; set; }
 }
 
 public sealed class Response

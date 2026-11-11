@@ -368,6 +368,13 @@ public partial class App : Application
 
         var header = new Forms::ToolStripMenuItem("Time left: --") { Enabled = false };
         menu.Items.Add(header);
+
+        // Der woechentliche Joker - ohne Passwort, deshalb hier im Menue und
+        // nicht hinter der Passwortleiste des Steuerpults.
+        var freeDay = new Forms::ToolStripMenuItem("Take today off (weekly free day) ...");
+        freeDay.Click += async (_, _) => await TakeFreeDayAsync();
+        menu.Items.Add(freeDay);
+
         menu.Items.Add(new Forms::ToolStripSeparator());
 
         var toggleOverlay = new Forms::ToolStripMenuItem("Hide overlay");
@@ -441,6 +448,16 @@ public partial class App : Application
             header.Text = _status is null
                 ? "Service unreachable"
                 : $"Time left: {FormatMinutes(_status.BalanceSeconds)}";
+
+            freeDay.Visible = _status?.Config?.WeeklyFreeDay == true || _status?.FreeDayActive == true;
+            freeDay.Enabled = _status?.FreeDayAvailable == true;
+            freeDay.Text = _status switch
+            {
+                { FreeDayActive: true } => "Today is your free day",
+                { FreeDayTakenThisWeek: { } taken } =>
+                    $"Free day used this week ({taken.ToDateTime(TimeOnly.MinValue):dddd})",
+                _ => "Take today off (weekly free day) ...",
+            };
 
             toggleOverlay.Text = _overlayVisible ? "Hide overlay" : "Show overlay";
             toggleMode.Text = _overlay?.CountUp == true
@@ -630,6 +647,41 @@ public partial class App : Application
         _master.Closed += (_, _) => _master = null;
         _master.Show();
         _master.Activate();
+    }
+
+    /// <summary>
+    /// Fragt nach, bevor der Joker verbraucht wird - er laesst sich nicht
+    /// zuruecknehmen und reicht fuer die ganze Woche nur einmal.
+    /// </summary>
+    internal static async Task<Response?> TakeFreeDayAsync(Window? owner = null)
+    {
+        const string question =
+            "Take today off?\n\nFrom now until midnight the clock stands still and your balance is not " +
+            "touched. You get one free day per week (Monday to Sunday), and it can't be undone.";
+
+        var answer = owner is null
+            ? MessageBox.Show(question, "Monkey - weekly free day", MessageBoxButton.YesNo,
+                MessageBoxImage.Question, MessageBoxResult.No)
+            : MessageBox.Show(owner, question, "Monkey - weekly free day", MessageBoxButton.YesNo,
+                MessageBoxImage.Question, MessageBoxResult.No);
+
+        if (answer != MessageBoxResult.Yes) return null;
+
+        var response = await PipeClient.SendAsync(new Request
+        {
+            Type = RequestType.FreeDay,
+            SessionId = Process.GetCurrentProcess().SessionId,
+        }) ?? Response.Fail("The service is not responding. Is MonkeySrv running?");
+
+        // Aus dem Steuerpult heraus meldet das Fenster selbst, was geschah.
+        if (owner is null)
+        {
+            MessageBox.Show(response.Message ?? "Done.", "Monkey", MessageBoxButton.OK,
+                response.Ok ? MessageBoxImage.Information : MessageBoxImage.Warning);
+        }
+
+        if (Current is App app) await app.PollAsync();
+        return response;
     }
 
     private void QuitAgent()

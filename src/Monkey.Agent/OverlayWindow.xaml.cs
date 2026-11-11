@@ -323,6 +323,10 @@ public partial class OverlayWindow : Window
         {
             CaptionLabel.Text = showElapsed ? "used so far" : "still left";
         }
+        else if (status.FreeDayActive)
+        {
+            CaptionLabel.Text = showElapsed ? "signed in, free day" : "left, free day";
+        }
         else
         {
             CaptionLabel.Text = showElapsed
@@ -333,6 +337,13 @@ public partial class OverlayWindow : Window
         if (CustomColor is { } chosen)
         {
             Colorize(chosen);
+            return;
+        }
+
+        // Am freien Tag laeuft nichts ab - keine Ampel, die Druck macht.
+        if (status.FreeDayActive)
+        {
+            Colorize(Tones.Normal);
             return;
         }
 

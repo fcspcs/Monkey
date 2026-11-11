@@ -300,6 +300,7 @@ internal sealed class GuardEngine
                 RemovedMinutes = d.RemovedSeconds / 60.0,
                 BalanceEndMinutes = d.BalanceEndSeconds / 60.0,
                 EarnedEndMinutes = d.EarnedEndSeconds / 60.0,
+                FreeDay = d.FreeDay,
             })
             .ToList();
 
@@ -324,6 +325,10 @@ internal sealed class GuardEngine
     {
         var result = new List<int>();
 
+        // Am freien Tag zaehlt niemand - bis Mitternacht steht die Uhr. Damit
+        // faellt auch jede Warnung und jede Schonfrist weg.
+        if (FreeDayToday()) return result;
+
         foreach (var session in sessions)
         {
             if (session.State != Native.WtsConnectState.Active) continue;
@@ -346,6 +351,65 @@ internal sealed class GuardEngine
         }
 
         return result;
+    }
+
+    // ------------------------------------------------------- Freier Tag
+
+    private DateOnly LocalToday() => DateOnly.FromDateTime(_clock.Now.LocalDateTime);
+
+    /// <summary>Montag der Kalenderwoche, in der der Tag liegt.</summary>
+    internal static DateOnly WeekStart(DateOnly date) =>
+        date.AddDays(-(((int)date.DayOfWeek + 6) % 7));
+
+    /// <summary>Heute ist der freie Tag. Endet von selbst mit dem Datumswechsel.</summary>
+    private bool FreeDayToday() => _state.FreeDayDate == LocalToday();
+
+    /// <summary>
+    /// Der Tag, an dem der Joker in dieser Woche genommen wurde, sonst null.
+    /// Ein Datum aus einer spaeteren Woche (nur denkbar, wenn die Uhr einmal
+    /// vorging) gilt ebenfalls als verbraucht - lieber einmal zu streng, als
+    /// den Joker zweimal herzugeben.
+    /// </summary>
+    private DateOnly? FreeDayTakenThisWeek() =>
+        _state.FreeDayDate is { } taken && taken >= WeekStart(LocalToday()) ? taken : null;
+
+    private bool FreeDayAvailable() =>
+        _state.Config.WeeklyFreeDay && FreeDayTakenThisWeek() is null;
+
+    /// <summary>
+    /// Den woechentlichen freien Tag nehmen: ab jetzt bis Mitternacht steht die
+    /// Uhr. Was heute schon verbraucht ist, bleibt verbraucht - es ist eine
+    /// Pause, kein Geschenk. Rueckgaengig machen geht nicht, sonst liesse sich
+    /// der Joker stundenweise ueber die Woche verteilen.
+    /// </summary>
+    private Response HandleFreeDay(Request request)
+    {
+        var today = LocalToday();
+
+        if (_state.FreeDayDate == today)
+            return Response.Success("Today already is your free day - the clock stands still until midnight.",
+                BuildStatus(request.SessionId));
+
+        if (!_state.Config.WeeklyFreeDay)
+            return Response.Fail("The weekly free day is switched off in the settings.");
+
+        if (FreeDayTakenThisWeek() is { } taken)
+            return Response.Fail(
+                $"This week's free day was already taken on {taken.ToString("dddd", CultureInfo.InvariantCulture)}. " +
+                "The next one is available from Monday.");
+
+        _state.FreeDayDate = today;
+        Today().FreeDay = true;
+
+        ResetGrace();
+        _previousRemainingMinutes = double.MaxValue;
+        _store.Save(_state);
+        _lastSave = _clock.Now;
+        KickTelegram();
+
+        Log.Write($"Weekly free day taken for {today:yyyy-MM-dd}. Balance stays at {Format(_state.BalanceSeconds)}.");
+        return Response.Success("Enjoy your free day! The clock stands still until midnight.",
+            BuildStatus(request.SessionId));
     }
 
     private void Enforce(List<int> sessions, bool freshLogin)
@@ -497,6 +561,9 @@ internal sealed class GuardEngine
                 case RequestType.AddTime:
                     return HandleAddTime(request);
 
+                case RequestType.FreeDay:
+                    return HandleFreeDay(request);
+
                 case RequestType.SetConfig:
                     return HandleSetConfig(request);
 
@@ -580,6 +647,7 @@ internal sealed class GuardEngine
             config.PauseOnScreensaver = incoming.PauseOnScreensaver;
             config.WarnMinutes = Math.Clamp(incoming.WarnMinutes, 1, 24 * 60);
             config.AutoUpdate = incoming.AutoUpdate;
+            config.WeeklyFreeDay = incoming.WeeklyFreeDay;
 
             // MaxManualGrantMinutes ist bewusst NICHT enthalten - es wird nur beim
             // Installieren festgelegt und laesst sich hier nicht aendern.
@@ -981,6 +1049,9 @@ internal sealed class GuardEngine
             DailyGrantMinutes = _state.Config.DailyGrantMinutes,
             CapMinutes = _state.Config.CapMinutes,
             ClockTamperEvents = _state.ClockTamperEvents,
+            FreeDayActive = FreeDayToday(),
+            FreeDayAvailable = FreeDayAvailable(),
+            FreeDayTakenThisWeek = FreeDayTakenThisWeek(),
             PasswordConfigured = _state.HasPassword,
             PersistenceError = _store.LastSaveError,
             Config = _state.Config.Clone(),

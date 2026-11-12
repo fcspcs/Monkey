@@ -532,7 +532,8 @@ public sealed class GuardEngineTests
         Assert.False(status.Counting);
         Assert.True(status.FreeDayActive);
         Assert.False(status.FreeDayAvailable);
-        Assert.Equal(Today, status.FreeDayTakenThisWeek);
+        Assert.Equal([Today], status.FreeDaysTakenThisWeek);
+        Assert.Equal(2, status.FreeDaysPerWeek);
     }
 
     [Fact]
@@ -542,7 +543,7 @@ public sealed class GuardEngineTests
 
         engine.Handle(RequestType.FreeDay);
 
-        Assert.Equal(Today, TestEnv.PersistedState().FreeDayDate);
+        Assert.Equal([Today], TestEnv.PersistedState().FreeDayDates);
         var history = engine.Handle(RequestType.History).History!;
         Assert.True(history.Single(d => d.Date == Today).FreeDay);
     }
@@ -562,24 +563,41 @@ public sealed class GuardEngineTests
     }
 
     [Fact]
-    public void FreeDay_OnlyOncePerWeek()
+    public void FreeDay_SecondOneInTheWeekIsAllowed()
     {
-        // Frueher in derselben Woche schon genommen: heute nicht noch einmal.
-        // Ist heute Montag, gibt es kein frueheres Datum in der Woche - dann
-        // pruefen wir den Wochenanfang selbst ueber den Fall "heute schon".
-        var weekStart = GuardEngine.WeekStart(Today);
-        if (weekStart == Today) return;
-
+        // Ein freier Tag ist diese Woche schon weg - der zweite geht noch.
+        // Ein Datum spaeter in der Woche zaehlt genauso (Uhr ging einmal vor).
         var engine = TestEnv.Engine(s =>
         {
             s.BalanceSeconds = 300;
-            s.FreeDayDate = weekStart;
+            s.FreeDayDates = [GuardEngine.WeekStart(Today).AddDays(Today == GuardEngine.WeekStart(Today) ? 6 : 0)];
+        }, TestEnv.User());
+
+        Assert.True(engine.Status().FreeDayAvailable);
+
+        var response = engine.Handle(RequestType.FreeDay);
+
+        Assert.True(response.Ok, response.Message);
+        Assert.Contains("last one this week", response.Message);
+        Assert.True(engine.Status().FreeDayActive);
+        Assert.Equal(2, engine.Status().FreeDaysTakenThisWeek.Count);
+    }
+
+    [Fact]
+    public void FreeDay_NoThirdOneInTheWeek()
+    {
+        var monday = GuardEngine.WeekStart(Today);
+        var engine = TestEnv.Engine(s =>
+        {
+            s.BalanceSeconds = 300;
+            // Zwei andere Tage dieser Woche - immer welche, die nicht heute sind.
+            s.FreeDayDates = [.. Enumerable.Range(0, 7).Select(monday.AddDays).Where(d => d != Today).Take(2)];
         }, TestEnv.User());
 
         var response = engine.Handle(RequestType.FreeDay);
 
         Assert.False(response.Ok);
-        Assert.Contains("already taken", response.Message);
+        Assert.Contains("used up", response.Message);
         Assert.False(engine.Status().FreeDayActive);
         Assert.False(engine.Status().FreeDayAvailable);
 
@@ -591,10 +609,11 @@ public sealed class GuardEngineTests
     [Fact]
     public void FreeDay_LastWeeksDoesNotCount()
     {
-        var engine = TestEnv.Engine(s => s.FreeDayDate = GuardEngine.WeekStart(Today).AddDays(-1));
+        var monday = GuardEngine.WeekStart(Today);
+        var engine = TestEnv.Engine(s => s.FreeDayDates = [monday.AddDays(-2), monday.AddDays(-1)]);
 
         Assert.True(engine.Status().FreeDayAvailable);
-        Assert.Null(engine.Status().FreeDayTakenThisWeek);
+        Assert.Empty(engine.Status().FreeDaysTakenThisWeek);
         Assert.True(engine.Handle(RequestType.FreeDay).Ok);
     }
 
@@ -606,7 +625,7 @@ public sealed class GuardEngineTests
         var engine = TestEnv.Engine(s =>
         {
             s.BalanceSeconds = 300;
-            s.FreeDayDate = Today.AddDays(-1);
+            s.FreeDayDates = [Today.AddDays(-1)];
         }, TestEnv.User());
 
         Thread.Sleep(150);
@@ -641,7 +660,7 @@ public sealed class GuardEngineTests
 
         Assert.False(response.Ok);
         Assert.False(engine.Status().FreeDayAvailable);
-        Assert.Null(TestEnv.PersistedState().FreeDayDate);
+        Assert.Empty(TestEnv.PersistedState().FreeDayDates);
     }
 
     [Fact]
@@ -656,6 +675,20 @@ public sealed class GuardEngineTests
 
         Assert.True(engine.Handle(RequestType.SetConfig, TestEnv.Password, r => r.Config = config).Ok);
         Assert.False(engine.Status().Config!.WeeklyFreeDay);
+    }
+
+    [Fact]
+    public void FreeDay_From150_IsCarriedOver()
+    {
+        // 1.5.0 merkte sich einen einzelnen Tag in FreeDayDate.
+        var engine = TestEnv.Engine(s => s.FreeDayDate = Today, TestEnv.User());
+
+        Assert.True(engine.Status().FreeDayActive);
+        engine.Flush();
+
+        var persisted = TestEnv.PersistedState();
+        Assert.Null(persisted.FreeDayDate);
+        Assert.Equal([Today], persisted.FreeDayDates);
     }
 
     [Theory]

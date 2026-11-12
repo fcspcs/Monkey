@@ -839,35 +839,41 @@ public partial class MasterWindow : ChromeWindow
         });
     }
 
-    private const string FreeDayExplanation =
-        "Once a week (Monday to Sunday) you can stop the clock until midnight - no master password " +
-        "needed. Your balance stays as it is. It can't be undone.";
-
     private void ShowFreeDayState(StatusDto status)
     {
         FreeDayButton.IsEnabled = status.FreeDayAvailable;
 
+        var perWeek = status.FreeDaysPerWeek;
+        var taken = status.FreeDaysTakenThisWeek;
+        var left = Math.Max(0, perWeek - taken.Count);
+        var takenText = taken.Count == 0
+            ? string.Empty
+            : " Taken this week: " + string.Join(", ", taken.Select(d =>
+                d.ToDateTime(TimeOnly.MinValue).ToString("dddd", CultureInfo.InvariantCulture))) + ".";
+
         if (status.FreeDayActive)
         {
             FreeDayButton.Content = "Today is your free day";
-            FreeDayText.Text = "The clock stands still until midnight. The next free day is available from Monday.";
-        }
-        else if (status.FreeDayTakenThisWeek is { } taken)
-        {
-            FreeDayButton.Content = "Used this week";
-            FreeDayText.Text =
-                $"This week's free day was {taken.ToDateTime(TimeOnly.MinValue).ToString("dddd", CultureInfo.InvariantCulture)}. " +
-                "The next one is available from Monday.";
+            FreeDayText.Text = "The clock stands still until midnight." + takenText +
+                (left > 0 ? $" {left} more left this week." : " The next ones are available from Monday.");
         }
         else if (status.Config?.WeeklyFreeDay == false)
         {
             FreeDayButton.Content = "Take today off";
             FreeDayText.Text = "Switched off in the settings.";
         }
+        else if (left == 0)
+        {
+            FreeDayButton.Content = "Used up this week";
+            FreeDayText.Text = takenText.TrimStart() + " The next ones are available from Monday.";
+        }
         else
         {
             FreeDayButton.Content = "Take today off";
-            FreeDayText.Text = FreeDayExplanation;
+            FreeDayText.Text =
+                $"{perWeek} times a week (Monday to Sunday) you can stop the clock until midnight - no master " +
+                $"password needed. Your balance stays as it is. It can't be undone. {left} of {perWeek} left this week." +
+                takenText;
         }
     }
 

@@ -48,9 +48,12 @@ public sealed class GuardConfig
     /// </summary>
     public bool AutoUpdate { get; set; } = true;
 
+    /// <summary>So viele freie Tage gibt es pro Kalenderwoche.</summary>
+    public const int FreeDaysPerWeek = 2;
+
     /// <summary>
-    /// Einmal pro Kalenderwoche (Montag bis Sonntag) darf der Nutzer selbst einen
-    /// freien Tag nehmen - ohne Master-Passwort. Ab dann steht die Uhr bis
+    /// Pro Kalenderwoche (Montag bis Sonntag) darf der Nutzer selbst bis zu
+    /// <see cref="FreeDaysPerWeek"/> freie Tage nehmen - ohne Master-Passwort. Ab dann steht die Uhr bis
     /// Mitternacht still, das Guthaben bleibt unberuehrt. Ohne Passwort, weil
     /// genau das den Joker ausmacht: Wer das Passwort hat, kann ohnehin Zeit
     /// nachlegen. Die Grenze ist die Woche, nicht das Passwort.
@@ -175,9 +178,15 @@ public sealed class GuardState
     public DateTimeOffset LastSaved { get; set; }
 
     /// <summary>
-    /// Tag, an dem zuletzt der woechentliche freie Tag genommen wurde. Steht er
-    /// in der laufenden Kalenderwoche, ist der Joker fuer diese Woche verbraucht;
-    /// ist er heute, steht die Uhr still.
+    /// Tage, an denen ein freier Tag genommen wurde, aelteste zuerst. Die
+    /// Eintraege der laufenden Kalenderwoche zaehlen gegen das Wochenkontingent;
+    /// steht heute darin, steht die Uhr still. Auf wenige Wochen begrenzt.
+    /// </summary>
+    public List<DateOnly> FreeDayDates { get; set; } = new();
+
+    /// <summary>
+    /// Nur zum Einlesen von 1.5.0, das sich genau einen Tag merkte. Die Engine
+    /// uebernimmt ihn beim Start in <see cref="FreeDayDates"/> und leert das Feld.
     /// </summary>
     public DateOnly? FreeDayDate { get; set; }
 

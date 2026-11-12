@@ -120,11 +120,14 @@ public sealed class StatusDto
     /// <summary>Heute ist der freie Tag - die Uhr steht bis Mitternacht.</summary>
     public bool FreeDayActive { get; set; }
 
-    /// <summary>Der freie Tag dieser Woche ist noch zu haben (und eingeschaltet).</summary>
+    /// <summary>Heute laesst sich ein freier Tag nehmen (Kontingent uebrig, eingeschaltet).</summary>
     public bool FreeDayAvailable { get; set; }
 
-    /// <summary>Wann der freie Tag dieser Woche genommen wurde, sonst null.</summary>
-    public DateOnly? FreeDayTakenThisWeek { get; set; }
+    /// <summary>Diese Woche bereits genommene freie Tage, aelteste zuerst.</summary>
+    public List<DateOnly> FreeDaysTakenThisWeek { get; set; } = new();
+
+    /// <summary>Wie viele freie Tage es pro Woche gibt.</summary>
+    public int FreeDaysPerWeek { get; set; }
 
     public bool PasswordConfigured { get; set; }
     public GuardConfig? Config { get; set; }

@@ -451,11 +451,14 @@ public partial class App : Application
 
             freeDay.Visible = _status?.Config?.WeeklyFreeDay == true || _status?.FreeDayActive == true;
             freeDay.Enabled = _status?.FreeDayAvailable == true;
+            var left = _status is null ? 0 : _status.FreeDaysPerWeek - _status.FreeDaysTakenThisWeek.Count;
             freeDay.Text = _status switch
             {
-                { FreeDayActive: true } => "Today is your free day",
-                { FreeDayTakenThisWeek: { } taken } =>
-                    $"Free day used this week ({taken.ToDateTime(TimeOnly.MinValue):dddd})",
+                { FreeDayActive: true } => left > 0
+                    ? $"Today is your free day ({left} more this week)"
+                    : "Today is your free day",
+                not null when left <= 0 => "Free days used up this week",
+                not null => $"Take today off ({left} of {_status.FreeDaysPerWeek} free days left) ...",
                 _ => "Take today off (weekly free day) ...",
             };
 
@@ -651,13 +654,13 @@ public partial class App : Application
 
     /// <summary>
     /// Fragt nach, bevor der Joker verbraucht wird - er laesst sich nicht
-    /// zuruecknehmen und reicht fuer die ganze Woche nur einmal.
+    /// zuruecknehmen, und das Wochenkontingent ist knapp.
     /// </summary>
     internal static async Task<Response?> TakeFreeDayAsync(Window? owner = null)
     {
         const string question =
             "Take today off?\n\nFrom now until midnight the clock stands still and your balance is not " +
-            "touched. You get one free day per week (Monday to Sunday), and it can't be undone.";
+            "touched. You get two free days per week (Monday to Sunday), and it can't be undone.";
 
         var answer = owner is null
             ? MessageBox.Show(question, "Monkey - weekly free day", MessageBoxButton.YesNo,

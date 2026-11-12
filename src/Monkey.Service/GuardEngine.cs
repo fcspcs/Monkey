@@ -117,6 +117,14 @@ internal sealed class GuardEngine
         _lastSave = _clock.Now;
         _activeGrace = TimeSpan.FromSeconds(_state.Config.GraceSeconds);
 
+        // 1.5.0 kannte nur einen freien Tag pro Woche und merkte sich ihn einzeln.
+        if (_state.FreeDayDate is { } legacy)
+        {
+            if (!_state.FreeDayDates.Contains(legacy)) _state.FreeDayDates.Add(legacy);
+            _state.FreeDayDates.Sort();
+            _state.FreeDayDate = null;
+        }
+
         Log.Write($"Service started. Balance {Format(_state.BalanceSeconds)}, " +
                   $"per day {_state.Config.DailyGrantMinutes} min, cap {_state.Config.CapMinutes} min, " +
                   $"password {(_state.HasPassword ? "set" : "MISSING")}.");
@@ -362,19 +370,23 @@ internal sealed class GuardEngine
         date.AddDays(-(((int)date.DayOfWeek + 6) % 7));
 
     /// <summary>Heute ist der freie Tag. Endet von selbst mit dem Datumswechsel.</summary>
-    private bool FreeDayToday() => _state.FreeDayDate == LocalToday();
+    private bool FreeDayToday() => _state.FreeDayDates.Contains(LocalToday());
 
     /// <summary>
-    /// Der Tag, an dem der Joker in dieser Woche genommen wurde, sonst null.
-    /// Ein Datum aus einer spaeteren Woche (nur denkbar, wenn die Uhr einmal
-    /// vorging) gilt ebenfalls als verbraucht - lieber einmal zu streng, als
-    /// den Joker zweimal herzugeben.
+    /// Die in dieser Woche genommenen freien Tage. Ein Datum aus einer spaeteren
+    /// Woche (nur denkbar, wenn die Uhr einmal vorging) zaehlt ebenfalls mit -
+    /// lieber einmal zu streng, als einen Joker doppelt herzugeben.
     /// </summary>
-    private DateOnly? FreeDayTakenThisWeek() =>
-        _state.FreeDayDate is { } taken && taken >= WeekStart(LocalToday()) ? taken : null;
+    private List<DateOnly> FreeDaysTakenThisWeek()
+    {
+        var monday = WeekStart(LocalToday());
+        return _state.FreeDayDates.Where(d => d >= monday).OrderBy(d => d).ToList();
+    }
 
     private bool FreeDayAvailable() =>
-        _state.Config.WeeklyFreeDay && FreeDayTakenThisWeek() is null;
+        _state.Config.WeeklyFreeDay
+        && !FreeDayToday()
+        && FreeDaysTakenThisWeek().Count < GuardConfig.FreeDaysPerWeek;
 
     /// <summary>
     /// Den woechentlichen freien Tag nehmen: ab jetzt bis Mitternacht steht die
@@ -386,20 +398,26 @@ internal sealed class GuardEngine
     {
         var today = LocalToday();
 
-        if (_state.FreeDayDate == today)
+        if (FreeDayToday())
             return Response.Success("Today already is your free day - the clock stands still until midnight.",
                 BuildStatus(request.SessionId));
 
         if (!_state.Config.WeeklyFreeDay)
             return Response.Fail("The weekly free day is switched off in the settings.");
 
-        if (FreeDayTakenThisWeek() is { } taken)
+        var taken = FreeDaysTakenThisWeek();
+        if (taken.Count >= GuardConfig.FreeDaysPerWeek)
             return Response.Fail(
-                $"This week's free day was already taken on {taken.ToString("dddd", CultureInfo.InvariantCulture)}. " +
-                "The next one is available from Monday.");
+                $"This week's {GuardConfig.FreeDaysPerWeek} free days are used up " +
+                $"({string.Join(" and ", taken.Select(d => d.ToString("dddd", CultureInfo.InvariantCulture)))}). " +
+                "The next ones are available from Monday.");
 
-        _state.FreeDayDate = today;
+        _state.FreeDayDates.Add(today);
+        _state.FreeDayDates.Sort();
+        while (_state.FreeDayDates.Count > 32) _state.FreeDayDates.RemoveAt(0);
         Today().FreeDay = true;
+
+        var left = GuardConfig.FreeDaysPerWeek - taken.Count - 1;
 
         ResetGrace();
         _previousRemainingMinutes = double.MaxValue;
@@ -408,7 +426,8 @@ internal sealed class GuardEngine
         KickTelegram();
 
         Log.Write($"Weekly free day taken for {today:yyyy-MM-dd}. Balance stays at {Format(_state.BalanceSeconds)}.");
-        return Response.Success("Enjoy your free day! The clock stands still until midnight.",
+        return Response.Success("Enjoy your free day! The clock stands still until midnight. " +
+            (left > 0 ? $"{left} more free day(s) left this week." : "That was the last one this week."),
             BuildStatus(request.SessionId));
     }
 
@@ -1051,7 +1070,8 @@ internal sealed class GuardEngine
             ClockTamperEvents = _state.ClockTamperEvents,
             FreeDayActive = FreeDayToday(),
             FreeDayAvailable = FreeDayAvailable(),
-            FreeDayTakenThisWeek = FreeDayTakenThisWeek(),
+            FreeDaysTakenThisWeek = FreeDaysTakenThisWeek(),
+            FreeDaysPerWeek = GuardConfig.FreeDaysPerWeek,
             PasswordConfigured = _state.HasPassword,
             PersistenceError = _store.LastSaveError,
             Config = _state.Config.Clone(),

@@ -658,9 +658,9 @@ public partial class App : Application
     /// </summary>
     internal static async Task<Response?> TakeFreeDayAsync(Window? owner = null)
     {
-        const string question =
+        var question =
             "Take today off?\n\nFrom now until midnight the clock stands still and your balance is not " +
-            "touched. You get two free days per week (Monday to Sunday), and it can't be undone.";
+            $"touched. You get {GuardConfig.FreeDaysPerWeek} free days per week (Monday to Sunday), and it can't be undone.";
 
         var answer = owner is null
             ? MessageBox.Show(question, "Monkey - weekly free day", MessageBoxButton.YesNo,

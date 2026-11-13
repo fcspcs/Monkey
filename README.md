@@ -62,8 +62,8 @@ you trust. Then "just five more minutes" isn't an argument with yourself at 1am.
 - **Counts fairly.** The clock stops while the session is locked, the
   screensaver is on or the display has switched itself off, and sleep costs
   you nothing.
-- **Gives you two free days a week.** Twice per week (Monday to Sunday) you
-  can take a day off the clock yourself — no master password. From that moment
+- **Gives you three free days a week.** Three times per week (Monday to
+  Sunday) you can take a day off the clock yourself — no master password. From that moment
   until midnight nothing counts, and your balance stays exactly where it was.
   It's taken from the tray icon's right-click menu or the control panel's
   **Exceptions** page, and it can't be undone, so it can't be spread out over
@@ -120,7 +120,7 @@ master password):
 | Grace before sign-out | 90 seconds |
 | Buffer after signing in with an empty balance | 120 seconds |
 | Automatic updates (signed releases only) | on |
-| Two free days per week (taken without the master password) | on |
+| Three free days per week (taken without the master password) | on |
 
 The **cap** matters more than it looks. Without it, one long holiday leaves you
 with a balance so fat the whole thing stops meaning anything.

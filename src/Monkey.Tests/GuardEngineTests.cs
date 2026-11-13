@@ -533,7 +533,7 @@ public sealed class GuardEngineTests
         Assert.True(status.FreeDayActive);
         Assert.False(status.FreeDayAvailable);
         Assert.Equal([Today], status.FreeDaysTakenThisWeek);
-        Assert.Equal(2, status.FreeDaysPerWeek);
+        Assert.Equal(3, status.FreeDaysPerWeek);
     }
 
     [Fact]
@@ -563,14 +563,15 @@ public sealed class GuardEngineTests
     }
 
     [Fact]
-    public void FreeDay_SecondOneInTheWeekIsAllowed()
+    public void FreeDay_LastOneInTheWeekIsAllowed()
     {
-        // Ein freier Tag ist diese Woche schon weg - der zweite geht noch.
-        // Ein Datum spaeter in der Woche zaehlt genauso (Uhr ging einmal vor).
+        // Alle bis auf einen freien Tag sind diese Woche schon weg - der letzte
+        // geht noch. Ein Datum spaeter in der Woche zaehlt genauso (Uhr ging
+        // einmal vor), deshalb duerfen die Tage auch nach heute liegen.
         var engine = TestEnv.Engine(s =>
         {
             s.BalanceSeconds = 300;
-            s.FreeDayDates = [GuardEngine.WeekStart(Today).AddDays(Today == GuardEngine.WeekStart(Today) ? 6 : 0)];
+            s.FreeDayDates = OtherDaysThisWeek(GuardConfig.FreeDaysPerWeek - 1);
         }, TestEnv.User());
 
         Assert.True(engine.Status().FreeDayAvailable);
@@ -580,18 +581,23 @@ public sealed class GuardEngineTests
         Assert.True(response.Ok, response.Message);
         Assert.Contains("last one this week", response.Message);
         Assert.True(engine.Status().FreeDayActive);
-        Assert.Equal(2, engine.Status().FreeDaysTakenThisWeek.Count);
+        Assert.Equal(GuardConfig.FreeDaysPerWeek, engine.Status().FreeDaysTakenThisWeek.Count);
+    }
+
+    /// <summary>Andere Tage dieser Woche als heute, fruehe zuerst.</summary>
+    private static List<DateOnly> OtherDaysThisWeek(int count)
+    {
+        var monday = GuardEngine.WeekStart(Today);
+        return [.. Enumerable.Range(0, 7).Select(monday.AddDays).Where(d => d != Today).Take(count)];
     }
 
     [Fact]
-    public void FreeDay_NoThirdOneInTheWeek()
+    public void FreeDay_NoMoreThanTheWeeklyAllowance()
     {
-        var monday = GuardEngine.WeekStart(Today);
         var engine = TestEnv.Engine(s =>
         {
             s.BalanceSeconds = 300;
-            // Zwei andere Tage dieser Woche - immer welche, die nicht heute sind.
-            s.FreeDayDates = [.. Enumerable.Range(0, 7).Select(monday.AddDays).Where(d => d != Today).Take(2)];
+            s.FreeDayDates = OtherDaysThisWeek(GuardConfig.FreeDaysPerWeek);
         }, TestEnv.User());
 
         var response = engine.Handle(RequestType.FreeDay);

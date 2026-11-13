@@ -49,7 +49,7 @@ public sealed class GuardConfig
     public bool AutoUpdate { get; set; } = true;
 
     /// <summary>So viele freie Tage gibt es pro Kalenderwoche.</summary>
-    public const int FreeDaysPerWeek = 2;
+    public const int FreeDaysPerWeek = 3;
 
     /// <summary>
     /// Pro Kalenderwoche (Montag bis Sonntag) darf der Nutzer selbst bis zu

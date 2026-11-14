@@ -458,7 +458,7 @@
                                           Content="Install new releases automatically (signed updates only)"/>
                                 <Border Style="{StaticResource RowRule}"/>
                                 <CheckBox x:Name="WeeklyFreeDayBox" Style="{StaticResource Switch}"
-                                          Content="Allow three free days per week, taken without the master password"/>
+                                          Content="Allow five free days per week, taken without the master password"/>
                             </StackPanel>
                         </GroupBox>
 

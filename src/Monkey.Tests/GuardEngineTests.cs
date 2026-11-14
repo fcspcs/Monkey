@@ -533,7 +533,7 @@ public sealed class GuardEngineTests
         Assert.True(status.FreeDayActive);
         Assert.False(status.FreeDayAvailable);
         Assert.Equal([Today], status.FreeDaysTakenThisWeek);
-        Assert.Equal(3, status.FreeDaysPerWeek);
+        Assert.Equal(GuardConfig.FreeDaysPerWeek, status.FreeDaysPerWeek);
     }
 
     [Fact]
